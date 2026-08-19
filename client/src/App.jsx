@@ -121,13 +121,25 @@ export default function App() {
     activeTabIdRef.current = activeTabId;
   }, [activeTabId]);
 
+  // Helper to ensure an array of tabs for a project is always valid and non-empty
+  const getProjectTabs = useCallback((map, projPath, projName) => {
+    const list = map?.[projPath];
+    if (Array.isArray(list) && list.length > 0) {
+      return list;
+    }
+    return [createInitialTabForProject(projPath, projName || 'Project', 0)];
+  }, []);
+
   // Get active tabs array for current active project
-  const currentProjectTabs = projectChatTabsMap[activeProjectPath] || [
-    createInitialTabForProject(activeProjectPath, workspace?.name || 'Project', 0)
-  ];
+  const currentProjectTabs = useMemo(() => {
+    return getProjectTabs(projectChatTabsMap, activeProjectPath, workspace?.name);
+  }, [projectChatTabsMap, activeProjectPath, workspace, getProjectTabs]);
 
   // Active chat tab
-  const activeTab = currentProjectTabs.find((t) => t.id === activeTabId) || currentProjectTabs[0];
+  const activeTab = useMemo(() => {
+    const found = currentProjectTabs.find((t) => t.id === activeTabId);
+    return found || currentProjectTabs[0] || createInitialTabForProject(activeProjectPath, workspace?.name || 'Project', 0);
+  }, [currentProjectTabs, activeTabId, activeProjectPath, workspace]);
 
   // Ensure active tab matches current project when project switches
   useEffect(() => {
@@ -685,12 +697,15 @@ export default function App() {
 
     // Handle slash commands
     if (text.startsWith('/clear')) {
-      setProjectChatTabsMap((prev) => ({
-        ...prev,
-        [activeProjectPath]: (prev[activeProjectPath] || []).map((t) =>
-          t.id === activeTabId ? { ...t, messages: [] } : t
-        ),
-      }));
+      setProjectChatTabsMap((prev) => {
+        const existingTabs = getProjectTabs(prev, activeProjectPath, workspace?.name);
+        return {
+          ...prev,
+          [activeProjectPath]: existingTabs.map((t) =>
+            t.id === activeTabId ? { ...t, messages: [] } : t
+          ),
+        };
+      });
       return;
     }
 
@@ -705,12 +720,15 @@ export default function App() {
         role: 'assistant',
         content: `### 📊 Real-Time Antigravity CLI Quota (\`agy /usage\`)\n\n| Model Group | Metric | Remaining Left | Used |\n| :--- | :--- | :---: | :---: |\n| **Gemini Models** | 5-Hour Window | **${gemini5h}%** | ${100 - gemini5h}% |\n| **Gemini Models** | Weekly Quota | **${geminiW}%** | ${100 - geminiW}% |\n| **Claude & GPT Models** | 5-Hour Window | **${claude5h}%** | ${100 - claude5h}% |\n| **Claude & GPT Models** | Weekly Quota | **${claudeW}%** | ${100 - claudeW}% |\n\n> [!NOTE]\n> *Synced live with \`agy.exe /usage\` rate limits.*`,
       };
-      setProjectChatTabsMap((prev) => ({
-        ...prev,
-        [activeProjectPath]: (prev[activeProjectPath] || []).map((t) =>
-          t.id === activeTabId ? { ...t, messages: [...t.messages, usageMsg] } : t
-        ),
-      }));
+      setProjectChatTabsMap((prev) => {
+        const existingTabs = getProjectTabs(prev, activeProjectPath, workspace?.name);
+        return {
+          ...prev,
+          [activeProjectPath]: existingTabs.map((t) =>
+            t.id === activeTabId ? { ...t, messages: [...(t.messages || []), usageMsg] } : t
+          ),
+        };
+      });
       return;
     }
 
@@ -719,34 +737,45 @@ export default function App() {
         role: 'assistant',
         content: `### 💡 Antigravity Unified Harness Help\n\n- **Project Scope**: Currently in \`${activeProjectPath}\`.\n- **AI Agent Chat**: Type any question, code request, or refactoring prompt.\n- **Direct Shell Commands**: Type \`$ git status\`, \`$ npm run build\`, \`dir\`, \`ls\`, or switch to **Shell** mode to run commands directly.\n- **Slash Commands**:\n  - \`/usage\`: Check live 5-hour and weekly quota rate limits.\n  - \`/clear\`: Clear the active conversation stream.\n  - \`/help\`: View this help message.\n- **Chat Tabs**: Click \`+\` in the top bar to run multiple concurrent subagents.\n- **Shortcuts**:\n  - \`Ctrl+B\`: Toggle Sidebar\n  - \`Ctrl+F\`: Search conversation`,
       };
-      setProjectChatTabsMap((prev) => ({
-        ...prev,
-        [activeProjectPath]: (prev[activeProjectPath] || []).map((t) =>
-          t.id === activeTabId ? { ...t, messages: [...t.messages, helpMsg] } : t
-        ),
-      }));
+      setProjectChatTabsMap((prev) => {
+        const existingTabs = getProjectTabs(prev, activeProjectPath, workspace?.name);
+        return {
+          ...prev,
+          [activeProjectPath]: existingTabs.map((t) =>
+            t.id === activeTabId ? { ...t, messages: [...(t.messages || []), helpMsg] } : t
+          ),
+        };
+      });
       return;
     }
 
     const userMsg = { role: 'user', content: text };
-    setProjectChatTabsMap((prev) => ({
-      ...prev,
-      [activeProjectPath]: (prev[activeProjectPath] || []).map((t) =>
-        t.id === activeTabId
-          ? { 
-              ...t, 
-              messages: [...t.messages, userMsg], 
-              isStreaming: true,
-              currentStream: {
-                thoughts: `> Analyzing request for: \`${activeProjectPath}\`...\n`,
-                isThinking: true,
-                tools: [],
-                content: '',
+    setProjectChatTabsMap((prev) => {
+      const existingTabs = getProjectTabs(prev, activeProjectPath, workspace?.name);
+      const hasActive = existingTabs.some((t) => t.id === activeTabId);
+      const targetTabs = hasActive
+        ? existingTabs
+        : [...existingTabs, { ...createInitialTabForProject(activeProjectPath, workspace?.name, existingTabs.length), id: activeTabId }];
+
+      return {
+        ...prev,
+        [activeProjectPath]: targetTabs.map((t) =>
+          t.id === activeTabId
+            ? { 
+                ...t, 
+                messages: [...(t.messages || []), userMsg], 
+                isStreaming: true,
+                currentStream: {
+                  thoughts: `> Analyzing request for: \`${activeProjectPath}\`...\n`,
+                  isThinking: true,
+                  tools: [],
+                  content: '',
+                }
               }
-            }
-          : t
-      ),
-    }));
+            : t
+        ),
+      };
+    });
 
     wsClientRef.current?.send('RUN_AGENT_PROMPT', {
       prompt: text,
@@ -769,14 +798,22 @@ export default function App() {
       timestamp: Date.now(),
     };
 
-    setProjectChatTabsMap((prev) => ({
-      ...prev,
-      [activeProjectPath]: (prev[activeProjectPath] || []).map((t) =>
-        t.id === activeTabId
-          ? { ...t, messages: [...t.messages, termMsg] }
-          : t
-      ),
-    }));
+    setProjectChatTabsMap((prev) => {
+      const existingTabs = getProjectTabs(prev, activeProjectPath, workspace?.name);
+      const hasActive = existingTabs.some((t) => t.id === activeTabId);
+      const targetTabs = hasActive
+        ? existingTabs
+        : [...existingTabs, { ...createInitialTabForProject(activeProjectPath, workspace?.name, existingTabs.length), id: activeTabId }];
+
+      return {
+        ...prev,
+        [activeProjectPath]: targetTabs.map((t) =>
+          t.id === activeTabId
+            ? { ...t, messages: [...(t.messages || []), termMsg] }
+            : t
+        ),
+      };
+    });
 
     wsClientRef.current?.send('EXEC_SHELL_COMMAND', {
       commandId,

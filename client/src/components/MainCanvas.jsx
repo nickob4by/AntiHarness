@@ -168,7 +168,8 @@ export default function MainCanvas({
     if (!chatSearchQuery.trim()) return [];
     const query = chatSearchQuery.toLowerCase();
     const indices = [];
-    messages.forEach((msg, idx) => {
+    const list = Array.isArray(messages) ? messages : [];
+    list.forEach((msg, idx) => {
       if (
         (msg.content && msg.content.toLowerCase().includes(query)) ||
         (msg.command && msg.command.toLowerCase().includes(query)) ||
@@ -445,7 +446,7 @@ export default function MainCanvas({
       {/* 4. CHAT MESSAGES CONTAINER (AGENT CHAT + INLINE TERMINAL OUTPUTS) */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
         <div className="max-w-3xl mx-auto w-full space-y-6">
-          {messages.length === 0 && !isStreaming ? (
+          {(Array.isArray(messages) ? messages : []).length === 0 && !isStreaming ? (
             <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto space-y-4 text-slate-400 select-none py-12">
               <div className="w-14 h-14 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 shadow-inner">
                 <Sparkles className="w-7 h-7" />
@@ -460,14 +461,14 @@ export default function MainCanvas({
               <div className="grid grid-cols-2 gap-2 w-full pt-2">
                 <button 
                   onClick={() => onRunShellCommand("git status")}
-                  className="p-3 text-left rounded-lg bg-surface/60 hover:bg-surface border border-border transition-all text-xs hover:border-indigo-500/40"
+                  className="p-3 text-left rounded-lg bg-surface/60 hover:bg-surface border border-border transition-all text-xs hover:border-indigo-500/40 cursor-pointer"
                 >
                   <div className="font-medium text-slate-200">⚡ git status</div>
                   <div className="text-[10px] text-slate-500 mt-0.5">Run repository status</div>
                 </button>
                 <button 
                   onClick={() => onRunShellCommand("npm run build")}
-                  className="p-3 text-left rounded-lg bg-surface/60 hover:bg-surface border border-border transition-all text-xs hover:border-indigo-500/40"
+                  className="p-3 text-left rounded-lg bg-surface/60 hover:bg-surface border border-border transition-all text-xs hover:border-indigo-500/40 cursor-pointer"
                 >
                   <div className="font-medium text-slate-200">⚡ npm run build</div>
                   <div className="text-[10px] text-slate-500 mt-0.5">Test project build</div>
@@ -477,7 +478,7 @@ export default function MainCanvas({
           ) : (
             <>
               {/* Completed Messages & Terminal Command Executions */}
-              {messages.map((msg, idx) => {
+              {(Array.isArray(messages) ? messages : []).map((msg, idx) => {
                 const isMatch = matchingMessageIndices.includes(idx);
                 const isCurrentActiveMatch = isMatch && matchingMessageIndices[activeMatchIndex] === idx;
 
