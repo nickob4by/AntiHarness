@@ -4,6 +4,12 @@ export async function getSystemHealth() {
   return res.json();
 }
 
+export async function getUsage() {
+  const res = await fetch('/api/system/usage');
+  if (!res.ok) throw new Error('Failed to fetch usage metrics');
+  return res.json();
+}
+
 export async function getProjects() {
   const res = await fetch('/api/workspace/projects');
   if (!res.ok) throw new Error('Failed to fetch projects');

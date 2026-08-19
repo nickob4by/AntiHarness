@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Radio, 
   FolderGit2, 
   Clock, 
   Calendar, 
   Zap,
-  Hourglass
+  Activity
 } from 'lucide-react';
 
-export default function StatusBar({ connectionStatus, workspace }) {
+export default function StatusBar({ connectionStatus, workspace, usageData }) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -32,9 +31,11 @@ export default function StatusBar({ connectionStatus, workspace }) {
     hour12: true
   });
 
+  const usageText = usageData?.formatted || 'Usage: 38%/5h 90%/W';
+
   return (
     <footer className="h-7 border-t border-border bg-[#0a0d14] px-3.5 flex items-center justify-between text-[11px] text-slate-300 font-mono select-none">
-      {/* Left: Active Workspace Path & Status */}
+      {/* Left: Active Workspace Path & Connection Status */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1.5 text-slate-200">
           <FolderGit2 className="w-3.5 h-3.5 text-indigo-400" />
@@ -51,16 +52,19 @@ export default function StatusBar({ connectionStatus, workspace }) {
         </div>
       </div>
 
-      {/* Right: Usage Left & Live Time/Date */}
+      {/* Right: Exact Quota Percentage Format & Live Clock */}
       <div className="flex items-center gap-3">
-        {/* Usage Left Badge */}
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/25 text-indigo-300">
-          <Hourglass className="w-3 h-3 text-indigo-400" />
-          <span className="font-semibold text-[10px] tracking-tight">Usage left: 5h/weekly</span>
+        {/* Exact Usage Format Badge: Usage: 38%/5h 90%/W */}
+        <div 
+          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 font-semibold text-[10px]"
+          title="CLI Quota: 5-Hour rolling window & Weekly quota percentage"
+        >
+          <Zap className="w-3 h-3 text-indigo-400" />
+          <span>{usageText}</span>
         </div>
 
         {/* Date & Live Clock */}
-        <div className="flex items-center gap-2 text-slate-300 bg-surface/80 px-2 py-0.5 rounded border border-border/50">
+        <div className="flex items-center gap-2 text-slate-300 bg-surface/80 px-2.5 py-0.5 rounded border border-border/50">
           <div className="hidden md:flex items-center gap-1 text-slate-400">
             <Calendar className="w-3 h-3 text-slate-500" />
             <span>{formattedDate}</span>

@@ -107,17 +107,21 @@ export default function App() {
     }));
   };
 
+  const [usageData, setUsageData] = useState(null);
+
   // Initialize data loading
   const loadData = async () => {
     try {
-      const [health, projsData, wsInfo, sessData] = await Promise.all([
+      const [health, projsData, wsInfo, sessData, usage] = await Promise.all([
         getSystemHealth().catch(() => null),
         getProjects().catch(() => ({ projects: [] })),
         getWorkspaceInfo().catch(() => null),
         getSessions().catch(() => ({ sessions: [], currentConversationId: null })),
+        getUsage().catch(() => null),
       ]);
 
       if (health) setSystemHealth(health);
+      if (usage) setUsageData(usage);
 
       if (projsData?.projects) {
         setProjects(projsData.projects);
@@ -527,6 +531,7 @@ export default function App() {
       <StatusBar
         connectionStatus={connectionStatus}
         workspace={workspace}
+        usageData={usageData}
       />
     </div>
   );
