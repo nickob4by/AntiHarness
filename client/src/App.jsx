@@ -55,7 +55,7 @@ export default function App() {
   const [messages, setMessages] = useState([
     {
       role: 'assistant',
-      content: 'Welcome to **Antigravity Localhost Harness**!\n\n- **Nested Folders**: Click any folder in the project sidebar to expand its subfolders and files.\n- **Multi-Window**: Chat on the left and review files on the right.\n- **Resizable Layout**: Drag dividers between panes anytime.',
+      content: 'Welcome to **Antigravity Localhost Harness**!\n\n- **Model Selector**: Switch models and adjust thinking effort anytime directly in the chat header.\n- **Multi-Window**: Chat on the left and review files on the right.\n- **Toggle Views**: Collapse panes or the sidebar anytime for maximum focus.',
     }
   ]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -87,7 +87,6 @@ export default function App() {
   const handleToggleFolder = async (dirPath) => {
     const isCurrentlyExpanded = expandedFolders[dirPath] ?? false;
     
-    // If opening and children not loaded yet, fetch them
     if (!isCurrentlyExpanded && !folderChildrenMap[dirPath]) {
       setLoadingFolders((prev) => ({ ...prev, [dirPath]: true }));
       try {
@@ -406,7 +405,7 @@ export default function App() {
     }
   };
 
-  const handleSendMessage = (text) => {
+  const handleSendMessage = (text, options = {}) => {
     if (!text.trim() || isStreaming) return;
 
     const userMsg = { role: 'user', content: text };
@@ -417,7 +416,8 @@ export default function App() {
       prompt: text,
       workspacePath: workspace?.workspacePath || 'D:\\AntiG',
       sessionId: selectedSessionId || `session-${Date.now()}`,
-      model: 'Gemini 3.7 Flash',
+      model: options.model || 'Gemini 3.7 Flash',
+      thinkingEffort: options.thinkingEffort || 'medium',
     });
   };
 
@@ -429,7 +429,6 @@ export default function App() {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-slate-100 font-sans">
       {/* Top Header */}
       <Header
-        connectionStatus={connectionStatus}
         workspace={workspace}
         onRefresh={loadData}
         showFilePane={showFilePane}
@@ -469,7 +468,7 @@ export default function App() {
           </>
         )}
 
-        {/* 2. Center Main Canvas (Chat + History Summary) */}
+        {/* 2. Center Main Canvas (Chat + Model Selector + History Summary) */}
         <div 
           style={{ 
             width: showFilePane 
@@ -526,7 +525,6 @@ export default function App() {
 
       {/* Bottom Status Bar */}
       <StatusBar
-        systemHealth={systemHealth}
         connectionStatus={connectionStatus}
         workspace={workspace}
       />

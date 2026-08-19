@@ -11,11 +11,32 @@ import {
   ChevronUp, 
   ChevronDown, 
   FileText, 
-  Layers
+  Layers,
+  Cpu,
+  Brain,
+  Zap,
+  Sliders
 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ThinkingBox from './ThinkingBox';
 import ToolCard from './ToolCard';
+
+const AVAILABLE_MODELS = [
+  { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', desc: 'Default • Ultra-fast agentic coding' },
+  { id: 'gemini-3.7-thinking', name: 'Gemini 3.7 Flash (Thinking)', desc: 'High-reasoning chain-of-thought' },
+  { id: 'gemini-3.0-pro', name: 'Gemini 3.0 Pro', desc: 'Complex planning & deep analysis' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Lightweight & instant lookups' },
+  { id: 'claude-3.7-sonnet', name: 'Claude 3.7 Sonnet', desc: 'Hybrid reasoning model' },
+  { id: 'gpt-4o', name: 'GPT-4o', desc: 'Multimodal omni model' },
+];
+
+const THINKING_EFFORTS = [
+  { id: 'off', label: 'Thinking: Off', desc: 'Direct fast response' },
+  { id: 'low', label: 'Thinking: Low (1k)', desc: 'Quick targeted analysis' },
+  { id: 'medium', label: 'Thinking: Medium (8k)', desc: 'Balanced problem-solving' },
+  { id: 'high', label: 'Thinking: High (32k)', desc: 'Exhaustive step verification' },
+  { id: 'dynamic', label: 'Thinking: Dynamic', desc: 'Model-adaptive effort' },
+];
 
 export default function MainCanvas({
   selectedSessionTranscript,
@@ -29,6 +50,12 @@ export default function MainCanvas({
 }) {
   const [inputPrompt, setInputPrompt] = useState('');
   const [showHistoryTray, setShowHistoryTray] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('gemini-3.7-flash');
+  const [thinkingEffort, setThinkingEffort] = useState('medium');
+  
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const [isThinkingDropdownOpen, setIsThinkingDropdownOpen] = useState(false);
+
   const chatBottomRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -47,7 +74,11 @@ export default function MainCanvas({
   const handleSend = (e) => {
     e?.preventDefault();
     if (!inputPrompt.trim() || isStreaming) return;
-    onSendMessage(inputPrompt);
+    const activeModelObj = AVAILABLE_MODELS.find((m) => m.id === selectedModel);
+    onSendMessage(inputPrompt, {
+      model: activeModelObj?.name || 'Gemini 3.7 Flash',
+      thinkingEffort,
+    });
     setInputPrompt('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -66,16 +97,105 @@ export default function MainCanvas({
   const bulletPoints = summary?.bulletPoints || [];
   const filesModified = summary?.filesModified || [];
 
+  const currentModelName = AVAILABLE_MODELS.find((m) => m.id === selectedModel)?.name || 'Gemini 3.7 Flash';
+  const currentThinkingLabel = THINKING_EFFORTS.find((t) => t.id === thinkingEffort)?.label || 'Thinking: Medium';
+
   return (
-    <main className="flex-1 flex flex-col h-full overflow-hidden bg-background">
-      {/* 1. TOP HEADER BAR */}
-      <div className="h-9 px-4 border-b border-border/80 bg-surface/50 flex items-center justify-between text-xs select-none">
-        <div className="flex items-center gap-2 text-slate-300">
-          <Bot className="w-3.5 h-3.5 text-indigo-400" />
-          <span className="font-semibold text-[11px] text-slate-200">Agent Workspace Console</span>
+    <main className="flex-1 flex flex-col h-full overflow-hidden bg-background font-mono">
+      {/* 1. CHAT HEADER CONTROLS (MODEL SELECTOR, THINKING EFFORT & HISTORY) */}
+      <div className="h-10 px-3 border-b border-border/80 bg-surface/60 backdrop-blur flex items-center justify-between text-xs select-none z-20">
+        {/* Left: Model & Thinking Effort Selectors */}
+        <div className="flex items-center gap-2">
+          {/* Model Selector Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setIsModelDropdownOpen(!isModelDropdownOpen);
+                setIsThinkingDropdownOpen(false);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface border border-border/70 text-slate-200 hover:text-white hover:border-indigo-500/40 transition-all text-[11px]"
+            >
+              <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="font-semibold text-slate-100">{currentModelName}</span>
+              <ChevronDown className="w-3 h-3 text-slate-400" />
+            </button>
+
+            {isModelDropdownOpen && (
+              <div 
+                className="absolute left-0 top-full mt-1 w-64 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
+                onMouseLeave={() => setIsModelDropdownOpen(false)}
+              >
+                <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                  Select Model
+                </div>
+                {AVAILABLE_MODELS.map((model) => (
+                  <button
+                    key={model.id}
+                    onClick={() => {
+                      setSelectedModel(model.id);
+                      setIsModelDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors text-[11px] ${
+                      selectedModel === model.id
+                        ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                        : 'text-slate-300 hover:bg-surface-hover hover:text-white'
+                    }`}
+                  >
+                    <div className="font-medium">{model.name}</div>
+                    <div className="text-[9px] opacity-75 font-sans truncate">{model.desc}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Thinking Effort Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setIsThinkingDropdownOpen(!isThinkingDropdownOpen);
+                setIsModelDropdownOpen(false);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface border border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40 transition-all text-[11px]"
+            >
+              <Brain className="w-3.5 h-3.5 text-indigo-400" />
+              <span>{currentThinkingLabel}</span>
+              <ChevronDown className="w-3 h-3 text-slate-400" />
+            </button>
+
+            {isThinkingDropdownOpen && (
+              <div 
+                className="absolute left-0 top-full mt-1 w-56 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
+                onMouseLeave={() => setIsThinkingDropdownOpen(false)}
+              >
+                <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                  Thinking Effort
+                </div>
+                {THINKING_EFFORTS.map((effort) => (
+                  <button
+                    key={effort.id}
+                    onClick={() => {
+                      setThinkingEffort(effort.id);
+                      setIsThinkingDropdownOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors text-[11px] ${
+                      thinkingEffort === effort.id
+                        ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                        : 'text-slate-300 hover:bg-surface-hover hover:text-white'
+                    }`}
+                  >
+                    <div className="font-medium">{effort.label}</div>
+                    <div className="text-[9px] opacity-75 font-sans truncate">{effort.desc}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Inline History Toggle Button */}
+        {/* Right: Inline History Summary Toggle */}
         <button
           type="button"
           onClick={() => setShowHistoryTray(!showHistoryTray)}
@@ -87,7 +207,7 @@ export default function MainCanvas({
           }`}
         >
           <Clock className="w-3 h-3 text-indigo-400" />
-          <span>History Summary ({summary?.totalSteps || 0} steps)</span>
+          <span>History ({summary?.totalSteps || 0})</span>
           {showHistoryTray ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
         </button>
       </div>
@@ -96,7 +216,6 @@ export default function MainCanvas({
       {showHistoryTray && (
         <div className="border-b border-border/80 bg-[#0d121a] max-h-72 overflow-y-auto p-4 space-y-3 font-mono text-xs select-none shadow-inner animate-fadeIn">
           <div className="max-w-3xl mx-auto space-y-3">
-            {/* Header Row */}
             <div className="flex items-center justify-between text-[11px] text-slate-400 pb-1 border-b border-border/40">
               <span className="flex items-center gap-1.5 text-indigo-300 font-semibold">
                 <History className="w-3.5 h-3.5" />
