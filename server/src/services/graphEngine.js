@@ -261,11 +261,11 @@ export async function generateCodebaseGraph(workspaceRoot, maxDepth = 6) {
   mermaidGraph += `  CLI_Bin --> CLI_Skills\n`;
   mermaidGraph += `  CLI_Bin --> CLI_Brain\n\n`;
 
-  // 5. Stylings
-  mermaidGraph += `  classDef ui fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#e0e7ff,rx:8,ry:8;\n`;
-  mermaidGraph += `  classDef server fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#d1fae5,rx:8,ry:8;\n`;
-  mermaidGraph += `  classDef cli fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7,rx:8,ry:8;\n`;
-  mermaidGraph += `  classDef service fill:#164e63,stroke:#06b6d4,stroke-width:2px,color:#cffafe,rx:8,ry:8;\n`;
+  // 5. Stylings for pure Obsidian Dark Theme (no grey backgrounds)
+  mermaidGraph += `  classDef ui fill:#0f172a,stroke:#6366f1,stroke-width:1.5px,color:#f8fafc,rx:10,ry:10;\n`;
+  mermaidGraph += `  classDef server fill:#06281e,stroke:#10b981,stroke-width:1.5px,color:#f0fdf4,rx:10,ry:10;\n`;
+  mermaidGraph += `  classDef cli fill:#2a1506,stroke:#f59e0b,stroke-width:1.5px,color:#fffbeb,rx:10,ry:10;\n`;
+  mermaidGraph += `  classDef service fill:#082838,stroke:#06b6d4,stroke-width:1.5px,color:#ecfeff,rx:10,ry:10;\n`;
 
   // Calculate token efficiency estimate
   const estimatedRawSearchTokens = allFiles.length * 80 + 3000; // ~10,000+ tokens

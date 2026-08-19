@@ -14,22 +14,27 @@ import {
 
 mermaid.initialize({
   startOnLoad: false,
-  theme: 'dark',
+  theme: 'base',
   securityLevel: 'loose',
-  fontFamily: 'JetBrains Mono, monospace',
+  fontFamily: 'JetBrains Mono, monospace, sans-serif',
   themeVariables: {
     darkMode: true,
-    background: '#0a0d14',
-    primaryColor: '#6366f1',
+    background: 'transparent',
+    mainBkg: '#0b0f19',
+    primaryColor: '#1e1b4b',
     primaryTextColor: '#f8fafc',
-    primaryBorderColor: '#818cf8',
-    lineColor: '#94a3b8',
-    secondaryColor: '#3b82f6',
-    tertiaryColor: '#1e293b',
+    primaryBorderColor: '#6366f1',
+    lineColor: '#818cf8',
+    secondaryColor: '#06281e',
+    tertiaryColor: '#2a1506',
+    clusterBkg: '#090d16',
+    clusterBorder: '#1f293d',
+    edgeLabelBackground: '#0b101b',
+    fontSize: '12px'
   },
 });
 
-export default function MermaidRenderer({ chart, minHeight = 'min-h-[450px]', title = 'Architecture Diagram' }) {
+export default function MermaidRenderer({ chart, minHeight = 'min-h-[500px]', title = 'Architecture Diagram' }) {
   const containerRef = useRef(null);
   const [svgContent, setSvgContent] = useState('');
   const [error, setError] = useState(null);
@@ -118,11 +123,44 @@ export default function MermaidRenderer({ chart, minHeight = 'min-h-[450px]', ti
   }
 
   const content = (
-    <div className={`rounded-2xl border border-border/80 bg-[#0a0d14] overflow-hidden shadow-2xl flex flex-col ${
-      isFullscreen ? 'fixed inset-4 z-50 bg-[#070a10]' : 'my-2'
+    <div className={`rounded-2xl border border-border/80 bg-[#06080e] overflow-hidden shadow-2xl flex flex-col ${
+      isFullscreen ? 'fixed inset-4 z-50 bg-[#06080e]' : 'my-2'
     }`}>
+      {/* Scoped CSS for Sleek Dark Theme (Eliminates Grey Backgrounds) */}
+      <style>{`
+        .mermaid-canvas .cluster rect {
+          fill: #090d16 !important;
+          stroke: #1e293b !important;
+          stroke-width: 1.5px !important;
+          rx: 14px !important;
+        }
+        .mermaid-canvas .cluster .nodeLabel {
+          fill: #818cf8 !important;
+          font-weight: 700 !important;
+          font-size: 13px !important;
+        }
+        .mermaid-canvas .node rect, 
+        .mermaid-canvas .node polygon {
+          stroke-width: 1.5px !important;
+          rx: 10px !important;
+        }
+        .mermaid-canvas .edgeLabel {
+          background-color: #090d16 !important;
+          color: #94a3b8 !important;
+          border-radius: 6px !important;
+          padding: 2px 6px !important;
+        }
+        .mermaid-canvas .edgePath path {
+          stroke: #6366f1 !important;
+          stroke-width: 1.8px !important;
+        }
+        .mermaid-canvas .flowchart-link {
+          stroke: #818cf8 !important;
+        }
+      `}</style>
+
       {/* Header Controls Bar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-[#0f1422] border-b border-border/70 text-xs text-slate-300 font-mono select-none">
+      <div className="flex items-center justify-between px-3 py-2 bg-[#0a0d16] border-b border-border/70 text-xs text-slate-300 font-mono select-none">
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
           <span className="font-bold text-white tracking-tight">{title}</span>
@@ -136,19 +174,19 @@ export default function MermaidRenderer({ chart, minHeight = 'min-h-[450px]', ti
           <button
             onClick={() => setZoom((z) => Math.max(0.4, Number((z - 0.2).toFixed(2))))}
             title="Zoom Out (-)"
-            className="p-1.5 rounded-lg bg-surface hover:bg-surface-hover border border-border text-slate-300 hover:text-white transition-all cursor-pointer"
+            className="p-1.5 rounded-lg bg-[#0d121c] hover:bg-surface-hover border border-border text-slate-300 hover:text-white transition-all cursor-pointer"
           >
             <ZoomOut className="w-3.5 h-3.5" />
           </button>
 
-          <span className="text-[11px] px-2 py-0.5 rounded bg-black/40 border border-border/60 text-indigo-300 font-bold min-w-[50px] text-center font-mono">
+          <span className="text-[11px] px-2 py-0.5 rounded bg-black/60 border border-border/60 text-indigo-300 font-bold min-w-[50px] text-center font-mono">
             {Math.round(zoom * 100)}%
           </span>
 
           <button
             onClick={() => setZoom((z) => Math.min(3.0, Number((z + 0.2).toFixed(2))))}
             title="Zoom In (+)"
-            className="p-1.5 rounded-lg bg-surface hover:bg-surface-hover border border-border text-slate-300 hover:text-white transition-all cursor-pointer"
+            className="p-1.5 rounded-lg bg-[#0d121c] hover:bg-surface-hover border border-border text-slate-300 hover:text-white transition-all cursor-pointer"
           >
             <ZoomIn className="w-3.5 h-3.5" />
           </button>
@@ -156,7 +194,7 @@ export default function MermaidRenderer({ chart, minHeight = 'min-h-[450px]', ti
           <button
             onClick={handleResetView}
             title="Reset Zoom & Pan"
-            className="p-1.5 rounded-lg bg-surface hover:bg-surface-hover border border-border text-slate-300 hover:text-white transition-all cursor-pointer"
+            className="p-1.5 rounded-lg bg-[#0d121c] hover:bg-surface-hover border border-border text-slate-300 hover:text-white transition-all cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
@@ -167,7 +205,7 @@ export default function MermaidRenderer({ chart, minHeight = 'min-h-[450px]', ti
           <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             title={isFullscreen ? "Exit Fullscreen" : "Fullscreen View"}
-            className="p-1.5 rounded-lg bg-surface hover:bg-surface-hover border border-border text-slate-300 hover:text-white transition-all cursor-pointer"
+            className="p-1.5 rounded-lg bg-[#0d121c] hover:bg-surface-hover border border-border text-slate-300 hover:text-white transition-all cursor-pointer"
           >
             {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 text-amber-300" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
@@ -183,20 +221,16 @@ export default function MermaidRenderer({ chart, minHeight = 'min-h-[450px]', ti
         </div>
       </div>
 
-      {/* SVG Canvas Area with Drag & Pan */}
+      {/* SVG Canvas Area with Drag & Pan (Obsidian Pitch Black Background) */}
       <div 
         ref={containerRef}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        className={`p-6 overflow-hidden flex items-center justify-center bg-[#070a10] transition-all relative ${
+        className={`mermaid-canvas p-6 overflow-hidden flex items-center justify-center bg-[#06080e] transition-all relative ${
           isFullscreen ? 'flex-1 h-full cursor-grab active:cursor-grabbing' : `${minHeight} cursor-grab active:cursor-grabbing`
         }`}
-        style={{
-          backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px)',
-          backgroundSize: '24px 24px'
-        }}
       >
         {svgContent ? (
           <div 
@@ -205,7 +239,7 @@ export default function MermaidRenderer({ chart, minHeight = 'min-h-[450px]', ti
               transformOrigin: 'center center',
               transition: isDragging ? 'none' : 'transform 0.15s ease-out'
             }}
-            className="select-none inline-block filter drop-shadow-xl"
+            className="select-none inline-block filter drop-shadow-2xl"
             dangerouslySetInnerHTML={{ __html: svgContent }} 
           />
         ) : (
