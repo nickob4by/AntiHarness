@@ -1,48 +1,75 @@
-import React from 'react';
-import { HardDrive, Cpu, Radio, FolderGit2, Info } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Radio, 
+  FolderGit2, 
+  Clock, 
+  Calendar, 
+  Zap,
+  Hourglass
+} from 'lucide-react';
 
-export default function StatusBar({ systemHealth, connectionStatus, workspace }) {
+export default function StatusBar({ connectionStatus, workspace }) {
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formattedDate = currentTime.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+  const formattedTime = currentTime.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+
   return (
-    <footer className="h-7 border-t border-border bg-surface px-3 flex items-center justify-between text-[11px] text-slate-400 font-mono select-none">
-      <div className="flex items-center gap-4">
-        {/* Workspace path */}
-        <div className="flex items-center gap-1.5 text-slate-300">
-          <FolderGit2 className="w-3 h-3 text-indigo-400" />
+    <footer className="h-7 border-t border-border bg-[#0a0d14] px-3.5 flex items-center justify-between text-[11px] text-slate-300 font-mono select-none">
+      {/* Left: Active Workspace Path & Status */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 text-slate-200">
+          <FolderGit2 className="w-3.5 h-3.5 text-indigo-400" />
           <span className="truncate max-w-[280px]" title={workspace?.workspacePath}>
-            {workspace?.workspacePath || 'No workspace selected'}
+            {workspace?.workspacePath || 'D:\\AntiG'}
           </span>
         </div>
 
-        {/* Total Items */}
-        <div className="hidden sm:flex items-center gap-1 text-slate-500">
-          <span>{workspace?.totalItems ?? 0} files/dirs</span>
+        <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.2 rounded bg-surface border border-border/60">
+          <span className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+          <span className="text-[10px] text-slate-300">
+            {connectionStatus === 'connected' ? 'Connected' : 'Offline'}
+          </span>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        {/* System metrics */}
-        {systemHealth?.system && (
-          <>
-            <div className="hidden md:flex items-center gap-1.5 text-slate-400">
-              <Cpu className="w-3 h-3 text-indigo-400" />
-              <span>{systemHealth.system.cpus} CPUs</span>
-            </div>
-            <div className="hidden md:flex items-center gap-1.5 text-slate-400">
-              <HardDrive className="w-3 h-3 text-indigo-400" />
-              <span>RAM: {systemHealth.system.memory?.free} free / {systemHealth.system.memory?.total}</span>
-            </div>
-            <div className="hidden lg:flex items-center gap-1.5 text-slate-500">
-              <span>Node {systemHealth.antigravity?.nodeVersion}</span>
-            </div>
-          </>
-        )}
+      {/* Right: Usage Left & Live Time/Date */}
+      <div className="flex items-center gap-3">
+        {/* Usage Left Badge */}
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/25 text-indigo-300">
+          <Hourglass className="w-3 h-3 text-indigo-400" />
+          <span className="font-semibold text-[10px] tracking-tight">Usage left: 5h/weekly</span>
+        </div>
 
-        {/* Gateway connection status */}
-        <div className="flex items-center gap-1.5">
-          <Radio className={`w-3 h-3 ${connectionStatus === 'connected' ? 'text-emerald-400' : 'text-rose-400'}`} />
-          <span className={connectionStatus === 'connected' ? 'text-emerald-400' : 'text-rose-400'}>
-            {connectionStatus === 'connected' ? 'Gateway 3001' : 'Offline'}
-          </span>
+        {/* Date & Live Clock */}
+        <div className="flex items-center gap-2 text-slate-300 bg-surface/80 px-2 py-0.5 rounded border border-border/50">
+          <div className="hidden md:flex items-center gap-1 text-slate-400">
+            <Calendar className="w-3 h-3 text-slate-500" />
+            <span>{formattedDate}</span>
+          </div>
+          <span className="hidden md:inline text-slate-600">•</span>
+          <div className="flex items-center gap-1 text-slate-200 font-medium">
+            <Clock className="w-3 h-3 text-indigo-400" />
+            <span>{formattedTime}</span>
+          </div>
         </div>
       </div>
     </footer>
