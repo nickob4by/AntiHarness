@@ -169,10 +169,6 @@ export default function Sidebar({
                 <div 
                   onClick={() => {
                     onSelectProject(proj);
-                    // Ensure project tree stays expanded when selected
-                    if (!isExpanded) {
-                      onToggleProjectExpand(proj.path);
-                    }
                   }}
                   className={`px-2.5 py-2 flex items-center justify-between cursor-pointer transition-colors group select-none ${
                     isActive
