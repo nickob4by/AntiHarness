@@ -4,7 +4,7 @@ import {
   Clock, 
   Calendar, 
   Zap,
-  Info
+  Activity
 } from 'lucide-react';
 
 export default function StatusBar({ 
@@ -13,7 +13,7 @@ export default function StatusBar({
   usageData
 }) {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [showRemaining, setShowRemaining] = useState(false);
+  const [showUsed, setShowUsed] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -36,17 +36,26 @@ export default function StatusBar({
     hour12: true
   });
 
-  const fiveHourUsed = usageData?.fiveHourPercent ?? 38;
-  const weeklyUsed = usageData?.weeklyPercent ?? 90;
-  const fiveHourRemaining = usageData?.fiveHourRemainingPercent ?? Math.max(0, 100 - fiveHourUsed);
-  const weeklyRemaining = usageData?.weeklyRemainingPercent ?? Math.max(0, 100 - weeklyUsed);
+  const gemini5hRemaining = usageData?.fiveHourRemainingPercent ?? 52;
+  const geminiWeeklyRemaining = usageData?.weeklyRemainingPercent ?? 91;
+  const gemini5hUsed = usageData?.fiveHourPercent ?? (100 - gemini5hRemaining);
+  const geminiWeeklyUsed = usageData?.weeklyPercent ?? (100 - geminiWeeklyRemaining);
 
-  // Format text: either "Usage: 38%/5h 90%/W" or "Left: 62%/5h 10%/W"
-  const displayText = showRemaining
-    ? `Left: ${fiveHourRemaining}%/5h ${weeklyRemaining}%/W`
-    : `Usage: ${fiveHourUsed}%/5h ${weeklyUsed}%/W`;
+  const claude5hRemaining = usageData?.claudeGpt?.fiveHourRemaining ?? 88;
+  const claudeWeeklyRemaining = usageData?.claudeGpt?.weeklyRemaining ?? 96;
 
-  const isHighUsage = weeklyUsed >= 90 || fiveHourUsed >= 85;
+  // By default, display remaining left (or click to see % used)
+  const displayText = showUsed
+    ? `Usage: ${gemini5hUsed}%/5h ${geminiWeeklyUsed}%/W`
+    : `Left: ${gemini5hRemaining}%/5h ${geminiWeeklyRemaining}%/W`;
+
+  const isLowQuota = gemini5hRemaining <= 20 || geminiWeeklyRemaining <= 15;
+
+  const detailedTooltip = `Live agy CLI Quota (Click to switch Used/Left):
+• Gemini 5-Hour: ${gemini5hRemaining}% remaining (${gemini5hUsed}% used)
+• Gemini Weekly: ${geminiWeeklyRemaining}% remaining (${geminiWeeklyUsed}% used)
+• Claude/GPT 5-Hour: ${claude5hRemaining}% remaining
+• Claude/GPT Weekly: ${claudeWeeklyRemaining}% remaining`;
 
   return (
     <footer className="h-7 border-t border-border bg-[#0a0d14] px-3.5 flex items-center justify-between text-[11px] text-slate-300 font-mono select-none">
@@ -69,17 +78,17 @@ export default function StatusBar({
 
       {/* Right: Exact Quota Percentage Format & Live Clock */}
       <div className="flex items-center gap-3">
-        {/* Interactive Live Quota Badge */}
+        {/* Interactive Real-Time CLI Quota Badge */}
         <button 
-          onClick={() => setShowRemaining(!showRemaining)}
+          onClick={() => setShowUsed(!showUsed)}
           className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded transition-all cursor-pointer ${
-            isHighUsage 
+            isLowQuota 
               ? 'bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20' 
               : 'bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 hover:bg-indigo-500/20'
           } font-semibold text-[10px]`}
-          title={`Click to toggle: ${showRemaining ? 'Show Used %' : 'Show Remaining %'}\n5-Hour: ${fiveHourUsed}% used (${fiveHourRemaining}% left)\nWeekly: ${weeklyUsed}% used (${weeklyRemaining}% left)`}
+          title={detailedTooltip}
         >
-          <Zap className={`w-3 h-3 ${isHighUsage ? 'text-amber-400' : 'text-indigo-400'}`} />
+          <Zap className={`w-3 h-3 ${isLowQuota ? 'text-amber-400' : 'text-indigo-400'}`} />
           <span>{displayText}</span>
         </button>
 

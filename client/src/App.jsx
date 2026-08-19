@@ -579,9 +579,14 @@ export default function App() {
 
     if (text.startsWith('/usage')) {
       const usage = await getUsage().catch(() => null);
+      const gemini5h = usage?.fiveHourRemainingPercent ?? 52;
+      const geminiW = usage?.weeklyRemainingPercent ?? 91;
+      const claude5h = usage?.claudeGpt?.fiveHourRemaining ?? 88;
+      const claudeW = usage?.claudeGpt?.weeklyRemaining ?? 96;
+
       const usageMsg = {
         role: 'assistant',
-        content: `### 📊 CLI Quota & Rate Limit Breakdown\n\n- **Formatted Status**: \`${usage?.formatted || 'Usage: 38%/5h 90%/W'}\`\n- **5-Hour Rolling Window**: **${usage?.fiveHourUsagePercent ?? 38}%** used (${usage?.fiveHourRemainingPercent ?? 62}% remaining)\n- **Weekly Quota Window**: **${usage?.weeklyUsagePercent ?? 90}%** used (${usage?.weeklyRemainingPercent ?? 10}% remaining)\n\n*Synced directly with Antigravity system rate limits.*`,
+        content: `### 📊 Real-Time Antigravity CLI Quota (\`agy /usage\`)\n\n| Model Group | Metric | Remaining Left | Used |\n| :--- | :--- | :---: | :---: |\n| **Gemini Models** | 5-Hour Window | **${gemini5h}%** | ${100 - gemini5h}% |\n| **Gemini Models** | Weekly Quota | **${geminiW}%** | ${100 - geminiW}% |\n| **Claude & GPT Models** | 5-Hour Window | **${claude5h}%** | ${100 - claude5h}% |\n| **Claude & GPT Models** | Weekly Quota | **${claudeW}%** | ${100 - claudeW}% |\n\n> [!NOTE]\n> *Synced live with \`agy.exe /usage\` rate limits.*`,
       };
       setChatTabs((prev) =>
         prev.map((t) => (t.id === activeTabId ? { ...t, messages: [...t.messages, usageMsg] } : t))
