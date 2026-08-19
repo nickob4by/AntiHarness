@@ -5,9 +5,20 @@ import os from 'os';
 
 const router = express.Router();
 
+// Helper to determine the true repository root (if running from server subdir, step up)
+export function getRootWorkspace() {
+  const cwd = process.cwd();
+  if (path.basename(cwd).toLowerCase() === 'server' && fs.existsSync(path.join(cwd, '..', 'package.json'))) {
+    return path.resolve(path.join(cwd, '..'));
+  }
+  return path.resolve(cwd);
+}
+
+const defaultRoot = getRootWorkspace();
+
 // Track opened projects
 const registeredProjects = new Set([
-  path.resolve('D:/AntiG'),
+  defaultRoot,
 ]);
 
 // Helper to detect available Windows drives
@@ -35,7 +46,7 @@ function getAvailableDrives() {
 
 // Browse filesystem folders for Folder Picker UI
 router.get('/browse', (req, res) => {
-  const targetPath = req.query.path || process.cwd();
+  const targetPath = req.query.path || defaultRoot;
 
   try {
     const resolved = path.resolve(targetPath);
@@ -59,29 +70,29 @@ router.get('/browse', (req, res) => {
       }
 
       if (item.isDirectory()) {
-        const itemPath = path.join(resolved, item.name);
-        let itemCount = 0;
+        const fullPath = path.join(resolved, item.name);
         try {
-          itemCount = fs.readdirSync(itemPath).length;
+          // Check if accessible
+          fs.accessSync(fullPath, fs.constants.R_OK);
+          directories.push({
+            name: item.name,
+            path: fullPath,
+            isDirectory: true,
+          });
         } catch (e) {
-          // ignore permission errors
+          // skip inaccessible
         }
-
-        directories.push({
-          name: item.name,
-          path: itemPath,
-          itemCount,
-        });
       }
     }
 
-    const parentPath = path.dirname(resolved) !== resolved ? path.dirname(resolved) : null;
+    // Sort alphabetically
+    directories.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
     res.json({
       currentPath: resolved,
-      parentPath,
-      drives,
+      parentPath: path.dirname(resolved) !== resolved ? path.dirname(resolved) : null,
       directories,
+      drives,
     });
   } catch (error) {
     res.status(500).json({ error: error.message, drives: getAvailableDrives() });
@@ -90,41 +101,35 @@ router.get('/browse', (req, res) => {
 
 // List all registered projects
 router.get('/projects', (req, res) => {
-  const list = [];
-  for (const projPath of registeredProjects) {
+  const projects = Array.from(registeredProjects).map((projPath) => {
+    let itemCount = 0;
     try {
-      if (fs.existsSync(projPath) && fs.statSync(projPath).isDirectory()) {
-        const items = fs.readdirSync(projPath);
-        list.push({
-          name: path.basename(projPath) || projPath,
-          path: projPath,
-          itemCount: items.length,
-          exists: true,
-        });
+      if (fs.existsSync(projPath)) {
+        itemCount = fs.readdirSync(projPath).length;
       }
-    } catch (e) {
-      list.push({
-        name: path.basename(projPath) || projPath,
-        path: projPath,
-        itemCount: 0,
-        exists: false,
-      });
-    }
-  }
-  res.json({ projects: list });
+    } catch (e) {}
+
+    return {
+      name: path.basename(projPath) || projPath,
+      path: projPath,
+      itemCount,
+    };
+  });
+
+  res.json({ projects });
 });
 
-// Add / Open a new project folder
+// Add a new project folder to sidebar
 router.post('/projects', (req, res) => {
   const { folderPath } = req.body;
   if (!folderPath) {
-    return res.status(400).json({ error: 'Folder path is required' });
+    return res.status(400).json({ error: 'folderPath is required' });
   }
 
   try {
     const resolved = path.resolve(folderPath);
     if (!fs.existsSync(resolved)) {
-      return res.status(404).json({ error: `Directory does not exist: ${resolved}` });
+      return res.status(404).json({ error: 'Folder does not exist' });
     }
 
     const stats = fs.statSync(resolved);
@@ -160,7 +165,7 @@ router.delete('/projects', (req, res) => {
 
 // Get workspace metadata and file tree
 router.get('/info', (req, res) => {
-  const targetPath = req.query.path || process.cwd();
+  const targetPath = req.query.path || defaultRoot;
   
   try {
     const resolvedPath = path.resolve(targetPath);
@@ -217,10 +222,22 @@ router.get('/file', (req, res) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
+    const stats = fs.statSync(resolved);
+    if (stats.isDirectory()) {
+      return res.status(400).json({ error: 'Path is a directory, not a file' });
+    }
+
+    // Protect against reading massive binary files
+    if (stats.size > 5 * 1024 * 1024) {
+      return res.status(413).json({ error: 'File too large to open in browser editor (>5MB)' });
+    }
+
     const content = fs.readFileSync(resolved, 'utf-8');
     res.json({
       path: resolved,
       name: path.basename(resolved),
+      size: stats.size,
+      lastModified: stats.mtime,
       content,
     });
   } catch (error) {
@@ -228,30 +245,23 @@ router.get('/file', (req, res) => {
   }
 });
 
-// Save / Update file content
+// Save edited file content to disk
 router.put('/file', (req, res) => {
-  const { filePath, content } = req.body;
-  if (!filePath) {
-    return res.status(400).json({ error: 'File path is required' });
+  const { path: filePath, content } = req.body;
+  if (!filePath || content === undefined) {
+    return res.status(400).json({ error: 'Path and content are required' });
   }
 
   try {
     const resolved = path.resolve(filePath);
-    // Ensure parent dir exists
-    const dir = path.dirname(resolved);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    fs.writeFileSync(resolved, content || '', 'utf-8');
+    fs.writeFileSync(resolved, content, 'utf-8');
     const stats = fs.statSync(resolved);
 
     res.json({
       success: true,
       path: resolved,
-      name: path.basename(resolved),
       size: stats.size,
-      savedAt: new Date().toISOString(),
+      lastModified: stats.mtime,
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -260,32 +270,28 @@ router.put('/file', (req, res) => {
 
 // Create new file or folder
 router.post('/file', (req, res) => {
-  const { targetPath, isDirectory, name } = req.body;
-  if (!targetPath || !name) {
-    return res.status(400).json({ error: 'Target path and name are required' });
+  const { path: itemPath, isDirectory, content = '' } = req.body;
+  if (!itemPath) {
+    return res.status(400).json({ error: 'Path is required' });
   }
 
   try {
-    const itemPath = path.join(path.resolve(targetPath), name);
-    if (fs.existsSync(itemPath)) {
-      return res.status(400).json({ error: 'Item already exists' });
+    const resolved = path.resolve(itemPath);
+    if (fs.existsSync(resolved)) {
+      return res.status(409).json({ error: 'File or directory already exists' });
     }
 
     if (isDirectory) {
-      fs.mkdirSync(itemPath, { recursive: true });
+      fs.mkdirSync(resolved, { recursive: true });
     } else {
-      const parent = path.dirname(itemPath);
-      if (!fs.existsSync(parent)) {
-        fs.mkdirSync(parent, { recursive: true });
-      }
-      fs.writeFileSync(itemPath, '', 'utf-8');
+      fs.mkdirSync(path.dirname(resolved), { recursive: true });
+      fs.writeFileSync(resolved, content, 'utf-8');
     }
 
     res.json({
       success: true,
-      path: itemPath,
-      name,
-      isDirectory: !!isDirectory,
+      path: resolved,
+      isDirectory: Boolean(isDirectory),
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -294,13 +300,13 @@ router.post('/file', (req, res) => {
 
 // Delete file or folder
 router.delete('/file', (req, res) => {
-  const { targetPath } = req.body;
-  if (!targetPath) {
-    return res.status(400).json({ error: 'Target path is required' });
+  const { path: itemPath } = req.body;
+  if (!itemPath) {
+    return res.status(400).json({ error: 'Path is required' });
   }
 
   try {
-    const resolved = path.resolve(targetPath);
+    const resolved = path.resolve(itemPath);
     if (!fs.existsSync(resolved)) {
       return res.status(404).json({ error: 'Item not found' });
     }

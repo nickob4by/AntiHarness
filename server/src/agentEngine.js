@@ -4,6 +4,8 @@ import fs from 'fs';
 import os from 'os';
 import { recordPromptUsage } from './routes/system.js';
 
+import { getRootWorkspace } from './routes/workspace.js';
+
 // Store active agent stream runners
 const activeRuns = new Map();
 
@@ -34,13 +36,17 @@ export class AgentEngine {
     }
   }
 
-  async runPrompt(prompt, workspacePath = process.cwd(), model = 'Gemini 3.7 Flash', options = {}) {
+  async runPrompt(prompt, workspacePath, model = 'Gemini 3.7 Flash', options = {}) {
     activeRuns.set(this.sessionId, this);
     this.isAborted = false;
+
+    const resolvedWorkspace = path.resolve(workspacePath || getRootWorkspace());
+    console.log(`[AgentEngine] Spawning agy for session ${this.sessionId} in cwd: ${resolvedWorkspace}`);
 
     this.send('AGENT_STREAM_START', {
       prompt,
       model,
+      workspacePath: resolvedWorkspace,
       timestamp: Date.now(),
     });
 
@@ -71,7 +77,7 @@ export class AgentEngine {
 
     try {
       this.childProcess = spawn(agyBin, args, {
-        cwd: workspacePath || process.cwd(),
+        cwd: resolvedWorkspace,
         env: {
           ...process.env,
           TERM: 'xterm-256color',

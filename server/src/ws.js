@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws';
 import { spawn } from 'child_process';
 import path from 'path';
 import { AgentEngine, stopSession } from './agentEngine.js';
+import { getRootWorkspace } from './routes/workspace.js';
 
 export function setupWebSocket(server) {
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -66,9 +67,12 @@ export function setupWebSocket(server) {
             const shellArgs = isWindows ? ['-NoLogo', '-Command', command] : ['-c', command];
             const startTime = Date.now();
 
+            const resolvedWorkspace = path.resolve(workspacePath || getRootWorkspace());
+            console.log(`[ShellCommand] Executing "${command}" in cwd: ${resolvedWorkspace}`);
+
             try {
               const child = spawn(shell, shellArgs, {
-                cwd: workspacePath || process.cwd(),
+                cwd: resolvedWorkspace,
                 env: {
                   ...process.env,
                   TERM: 'xterm-256color',
