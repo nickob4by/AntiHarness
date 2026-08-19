@@ -109,10 +109,15 @@ export default function App() {
   const wsClientRef = useRef(null);
   const containerRef = useRef(null);
   const activeProjectRef = useRef(activeProjectPath);
+  const activeTabIdRef = useRef(activeTabId);
 
   useEffect(() => {
     activeProjectRef.current = activeProjectPath;
   }, [activeProjectPath]);
+
+  useEffect(() => {
+    activeTabIdRef.current = activeTabId;
+  }, [activeTabId]);
 
   // Get active tabs array for current active project
   const currentProjectTabs = projectChatTabsMap[activeProjectPath] || [
@@ -395,14 +400,14 @@ export default function App() {
 
     const ws = new HarnessWebSocket(
       (data) => {
-        const targetSessionId = data.sessionId || activeTabId;
+        const targetSessionId = data.sessionId || activeTabIdRef.current;
 
         const updateTab = (updater) => {
           setProjectChatTabsMap((prevMap) => {
             const nextMap = { ...prevMap };
             Object.keys(nextMap).forEach((projPath) => {
               nextMap[projPath] = nextMap[projPath].map((tab) => {
-                if (tab.id === targetSessionId || tab.id === activeTabId) {
+                if (tab.id === targetSessionId || tab.id === activeTabIdRef.current) {
                   return updater(tab);
                 }
                 return tab;
@@ -615,7 +620,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       ws.disconnect();
     };
-  }, [activeTabId]);
+  }, []);
 
   const handleOpenFile = async (file) => {
     if (file.isDirectory) return;
