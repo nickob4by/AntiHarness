@@ -54,6 +54,9 @@ export class AgentEngine {
     // Notify client of initial thinking phase with initial status
     this.send('AGENT_THOUGHT_START', { timestamp: Date.now() });
     this.send('AGENT_THOUGHT_CHUNK', { 
+      text: `> Analyzing request for workspace: \`${resolvedWorkspace}\`...\n` 
+    });
+
     // Auto-inject Token-Optimized Codebase Cartography if not yet mapped for this session
     let finalPrompt = prompt;
     if (!mappedSessions.has(this.sessionId)) {
