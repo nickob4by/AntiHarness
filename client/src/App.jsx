@@ -284,6 +284,16 @@ export default function App() {
   useEffect(() => {
     loadData();
 
+    // Poll live usage every 5 seconds
+    const usageInterval = setInterval(async () => {
+      try {
+        const usage = await getUsage();
+        if (usage) setUsageData(usage);
+      } catch (e) {
+        // ignore
+      }
+    }, 5000);
+
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
@@ -500,6 +510,7 @@ export default function App() {
     wsClientRef.current = ws;
 
     return () => {
+      clearInterval(usageInterval);
       window.removeEventListener('keydown', handleKeyDown);
       ws.disconnect();
     };

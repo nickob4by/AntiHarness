@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { recordPromptUsage } from './routes/system.js';
 
 // Store active agent stream runners
 const activeRuns = new Map();
@@ -206,6 +207,8 @@ export class AgentEngine {
         await new Promise((r) => setTimeout(r, 20));
         this.send('AGENT_STREAM_CHUNK', { text: chunk });
       }
+
+      recordPromptUsage(Math.round(fullResponse.length * 1.5));
 
       this.send('AGENT_STREAM_END', {
         completeResponse: fullResponse,

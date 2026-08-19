@@ -3,7 +3,8 @@ import {
   FolderGit2, 
   Clock, 
   Calendar, 
-  Zap
+  Zap,
+  Info
 } from 'lucide-react';
 
 export default function StatusBar({ 
@@ -12,6 +13,7 @@ export default function StatusBar({
   usageData
 }) {
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [showRemaining, setShowRemaining] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -34,7 +36,17 @@ export default function StatusBar({
     hour12: true
   });
 
-  const usageText = usageData?.formatted || 'Usage: 38%/5h 90%/W';
+  const fiveHourUsed = usageData?.fiveHourPercent ?? 38;
+  const weeklyUsed = usageData?.weeklyPercent ?? 90;
+  const fiveHourRemaining = usageData?.fiveHourRemainingPercent ?? Math.max(0, 100 - fiveHourUsed);
+  const weeklyRemaining = usageData?.weeklyRemainingPercent ?? Math.max(0, 100 - weeklyUsed);
+
+  // Format text: either "Usage: 38%/5h 90%/W" or "Left: 62%/5h 10%/W"
+  const displayText = showRemaining
+    ? `Left: ${fiveHourRemaining}%/5h ${weeklyRemaining}%/W`
+    : `Usage: ${fiveHourUsed}%/5h ${weeklyUsed}%/W`;
+
+  const isHighUsage = weeklyUsed >= 90 || fiveHourUsed >= 85;
 
   return (
     <footer className="h-7 border-t border-border bg-[#0a0d14] px-3.5 flex items-center justify-between text-[11px] text-slate-300 font-mono select-none">
@@ -57,14 +69,19 @@ export default function StatusBar({
 
       {/* Right: Exact Quota Percentage Format & Live Clock */}
       <div className="flex items-center gap-3">
-        {/* Exact Usage Format Badge: Usage: 38%/5h 90%/W */}
-        <div 
-          className="flex items-center gap-1.5 px-2.5 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 font-semibold text-[10px]"
-          title="CLI Quota: 5-Hour rolling window & Weekly quota percentage"
+        {/* Interactive Live Quota Badge */}
+        <button 
+          onClick={() => setShowRemaining(!showRemaining)}
+          className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded transition-all cursor-pointer ${
+            isHighUsage 
+              ? 'bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20' 
+              : 'bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 hover:bg-indigo-500/20'
+          } font-semibold text-[10px]`}
+          title={`Click to toggle: ${showRemaining ? 'Show Used %' : 'Show Remaining %'}\n5-Hour: ${fiveHourUsed}% used (${fiveHourRemaining}% left)\nWeekly: ${weeklyUsed}% used (${weeklyRemaining}% left)`}
         >
-          <Zap className="w-3 h-3 text-indigo-400" />
-          <span>{usageText}</span>
-        </div>
+          <Zap className={`w-3 h-3 ${isHighUsage ? 'text-amber-400' : 'text-indigo-400'}`} />
+          <span>{displayText}</span>
+        </button>
 
         {/* Date & Live Clock */}
         <div className="flex items-center gap-2 text-slate-300 bg-surface/80 px-2.5 py-0.5 rounded border border-border/50">
