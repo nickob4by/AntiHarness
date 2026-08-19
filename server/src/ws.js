@@ -32,11 +32,11 @@ export function setupWebSocket(server) {
             break;
 
           case 'RUN_AGENT_PROMPT': {
-            const { prompt, workspacePath, sessionId, model } = data.payload || {};
+            const { prompt, workspacePath, sessionId, model, thinkingEffort } = data.payload || {};
             if (!prompt) return;
 
             currentAgent = new AgentEngine(ws, sessionId);
-            await currentAgent.runPrompt(prompt, workspacePath, model);
+            await currentAgent.runPrompt(prompt, workspacePath, model, { thinkingEffort });
             break;
           }
 
