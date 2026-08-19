@@ -624,9 +624,9 @@ export default function MainCanvas({
           />
 
           {/* Bottom Toolbar: Mode Toggle, Model Selector, Thinking & Execute */}
-          <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[11px]">
+          <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-border/40 text-[11px]">
             {/* Left Controls: Mode + Model + Thinking */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
               {/* Input Mode Toggle: Auto / Agent / Shell */}
               <div className="flex items-center bg-surface border border-border/70 rounded p-0.5 text-[10px]">
                 <button
