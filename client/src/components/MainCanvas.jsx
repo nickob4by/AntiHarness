@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Send, 
   Sparkles, 
@@ -11,11 +11,12 @@ import {
   ChevronUp, 
   ChevronDown, 
   FileText, 
-  Layers,
-  Cpu,
-  Brain,
-  Zap,
-  Sliders
+  Cpu, 
+  Brain, 
+  Search, 
+  X, 
+  ArrowUp, 
+  ArrowDown
 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ThinkingBox from './ThinkingBox';
@@ -56,8 +57,14 @@ export default function MainCanvas({
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isThinkingDropdownOpen, setIsThinkingDropdownOpen] = useState(false);
 
+  // Chat Search state
+  const [showChatSearch, setShowChatSearch] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+
   const chatBottomRef = useRef(null);
   const textareaRef = useRef(null);
+  const messageRefs = useRef([]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -70,6 +77,18 @@ export default function MainCanvas({
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   }, [inputPrompt]);
+
+  // Handle Ctrl+F for quick chat search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setShowChatSearch((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleSend = (e) => {
     e?.preventDefault();
@@ -92,6 +111,43 @@ export default function MainCanvas({
     }
   };
 
+  // Find matching message indices
+  const matchingMessageIndices = useMemo(() => {
+    if (!chatSearchQuery.trim()) return [];
+    const query = chatSearchQuery.toLowerCase();
+    const indices = [];
+    messages.forEach((msg, idx) => {
+      if (
+        (msg.content && msg.content.toLowerCase().includes(query)) ||
+        (msg.thoughts && msg.thoughts.toLowerCase().includes(query))
+      ) {
+        indices.push(idx);
+      }
+    });
+    return indices;
+  }, [chatSearchQuery, messages]);
+
+  const handleNextMatch = () => {
+    if (matchingMessageIndices.length === 0) return;
+    const next = (activeMatchIndex + 1) % matchingMessageIndices.length;
+    setActiveMatchIndex(next);
+    scrollToMessage(matchingMessageIndices[next]);
+  };
+
+  const handlePrevMatch = () => {
+    if (matchingMessageIndices.length === 0) return;
+    const prev = (activeMatchIndex - 1 + matchingMessageIndices.length) % matchingMessageIndices.length;
+    setActiveMatchIndex(prev);
+    scrollToMessage(matchingMessageIndices[prev]);
+  };
+
+  const scrollToMessage = (msgIndex) => {
+    const el = messageRefs.current[msgIndex];
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  };
+
   const summary = selectedSessionTranscript?.summary;
   const lastUpdated = summary?.lastUpdated || 'Recent';
   const bulletPoints = summary?.bulletPoints || [];
@@ -102,7 +158,7 @@ export default function MainCanvas({
 
   return (
     <main className="flex-1 flex flex-col h-full overflow-hidden bg-background font-mono">
-      {/* 1. CHAT HEADER CONTROLS (MODEL SELECTOR, THINKING EFFORT & HISTORY) */}
+      {/* 1. CHAT HEADER CONTROLS */}
       <div className="h-10 px-3 border-b border-border/80 bg-surface/60 backdrop-blur flex items-center justify-between text-xs select-none z-20">
         {/* Left: Model & Thinking Effort Selectors */}
         <div className="flex items-center gap-2">
@@ -195,24 +251,104 @@ export default function MainCanvas({
           </div>
         </div>
 
-        {/* Right: Inline History Summary Toggle */}
-        <button
-          type="button"
-          onClick={() => setShowHistoryTray(!showHistoryTray)}
-          title="Toggle inline conversation history summary"
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-mono transition-all border ${
-            showHistoryTray
-              ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300 font-semibold shadow-sm'
-              : 'bg-surface border-border/60 text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
-          }`}
-        >
-          <Clock className="w-3 h-3 text-indigo-400" />
-          <span>History ({summary?.totalSteps || 0})</span>
-          {showHistoryTray ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
-        </button>
+        {/* Right: Chat Search & History Summary Toggle */}
+        <div className="flex items-center gap-1.5">
+          {/* Chat Search Toggle Button */}
+          <button
+            type="button"
+            onClick={() => setShowChatSearch(!showChatSearch)}
+            title="Search conversation (Ctrl+F)"
+            className={`p-1.5 rounded text-slate-300 transition-colors border ${
+              showChatSearch
+                ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300'
+                : 'bg-surface border-border/60 hover:bg-surface-hover hover:text-white'
+            }`}
+          >
+            <Search className="w-3 h-3" />
+          </button>
+
+          {/* History Summary Button */}
+          <button
+            type="button"
+            onClick={() => setShowHistoryTray(!showHistoryTray)}
+            title="Toggle inline conversation history summary"
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] font-mono transition-all border ${
+              showHistoryTray
+                ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300 font-semibold shadow-sm'
+                : 'bg-surface border-border/60 text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
+            }`}
+          >
+            <Clock className="w-3 h-3 text-indigo-400" />
+            <span>History ({summary?.totalSteps || 0})</span>
+            {showHistoryTray ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
+          </button>
+        </div>
       </div>
 
-      {/* 2. INLINE EMBEDDED HISTORY TRAY */}
+      {/* 2. CHAT SEARCH BAR STRIP */}
+      {showChatSearch && (
+        <div className="px-4 py-2 border-b border-border/80 bg-[#090d14] flex items-center justify-between gap-3 text-xs animate-fadeIn select-none">
+          <div className="flex items-center gap-2 flex-1 max-w-md">
+            <Search className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+            <input
+              type="text"
+              autoFocus
+              value={chatSearchQuery}
+              onChange={(e) => {
+                setChatSearchQuery(e.target.value);
+                setActiveMatchIndex(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (e.shiftKey) handlePrevMatch();
+                  else handleNextMatch();
+                } else if (e.key === 'Escape') {
+                  setShowChatSearch(false);
+                }
+              }}
+              placeholder="Find in chat messages..."
+              className="w-full bg-surface border border-border/80 rounded px-2.5 py-1 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 text-[10px] text-slate-400">
+            {chatSearchQuery && (
+              <span>
+                {matchingMessageIndices.length > 0 
+                  ? `${activeMatchIndex + 1} of ${matchingMessageIndices.length}` 
+                  : '0 matches'}
+              </span>
+            )}
+            <button
+              onClick={handlePrevMatch}
+              disabled={matchingMessageIndices.length === 0}
+              title="Previous Match (Shift+Enter)"
+              className="p-1 rounded bg-surface border border-border/60 hover:bg-surface-hover disabled:opacity-30 text-slate-300"
+            >
+              <ArrowUp className="w-3 h-3" />
+            </button>
+            <button
+              onClick={handleNextMatch}
+              disabled={matchingMessageIndices.length === 0}
+              title="Next Match (Enter)"
+              className="p-1 rounded bg-surface border border-border/60 hover:bg-surface-hover disabled:opacity-30 text-slate-300"
+            >
+              <ArrowDown className="w-3 h-3" />
+            </button>
+            <button
+              onClick={() => {
+                setShowChatSearch(false);
+                setChatSearchQuery('');
+              }}
+              className="p-1 rounded hover:bg-surface text-slate-400 hover:text-white"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. INLINE EMBEDDED HISTORY TRAY */}
       {showHistoryTray && (
         <div className="border-b border-border/80 bg-[#0d121a] max-h-72 overflow-y-auto p-4 space-y-3 font-mono text-xs select-none shadow-inner animate-fadeIn">
           <div className="max-w-3xl mx-auto space-y-3">
@@ -286,7 +422,7 @@ export default function MainCanvas({
         </div>
       )}
 
-      {/* 3. CHAT MESSAGES CONTAINER (ALIGNED TO MAX-W-3XL) */}
+      {/* 4. CHAT MESSAGES CONTAINER */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
         <div className="max-w-3xl mx-auto w-full space-y-6">
           {messages.length === 0 && !isStreaming ? (
@@ -325,53 +461,61 @@ export default function MainCanvas({
           ) : (
             <>
               {/* Completed Messages */}
-              {messages.map((msg, idx) => (
-                <div 
-                  key={idx} 
-                  className={`flex gap-3 w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  {msg.role !== 'user' && (
-                    <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0 text-indigo-400 mt-0.5 shadow-sm">
-                      <Bot className="w-4 h-4" />
-                    </div>
-                  )}
+              {messages.map((msg, idx) => {
+                const isMatch = matchingMessageIndices.includes(idx);
+                const isCurrentActiveMatch = isMatch && matchingMessageIndices[activeMatchIndex] === idx;
 
+                return (
                   <div 
-                    className={`p-3.5 rounded-xl text-xs leading-relaxed max-w-[85%] ${
-                      msg.role === 'user'
-                        ? 'bg-indigo-600 text-white rounded-br-none shadow-md'
-                        : 'bg-surface/90 border border-border text-slate-200 rounded-bl-none shadow-sm flex-1'
-                    }`}
+                    key={idx}
+                    ref={(el) => (messageRefs.current[idx] = el)}
+                    className={`flex gap-3 w-full transition-all ${
+                      msg.role === 'user' ? 'justify-end' : 'justify-start'
+                    } ${isCurrentActiveMatch ? 'ring-2 ring-indigo-500 rounded-2xl p-1 bg-indigo-500/5' : ''}`}
                   >
-                    {/* Thought process */}
-                    {msg.thoughts && (
-                      <ThinkingBox thoughts={msg.thoughts} isThinking={false} />
-                    )}
-
-                    {/* Tool Calls */}
-                    {msg.tools && msg.tools.length > 0 && (
-                      <div className="space-y-1.5 my-2">
-                        {msg.tools.map((tool) => (
-                          <ToolCard key={tool.toolId || tool.name} tool={tool} />
-                        ))}
+                    {msg.role !== 'user' && (
+                      <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0 text-indigo-400 mt-0.5 shadow-sm">
+                        <Bot className="w-4 h-4" />
                       </div>
                     )}
 
-                    {/* Content */}
-                    {msg.role === 'user' ? (
-                      <div className="whitespace-pre-wrap font-mono">{msg.content}</div>
-                    ) : (
-                      <MarkdownRenderer content={msg.content} />
+                    <div 
+                      className={`p-3.5 rounded-xl text-xs leading-relaxed max-w-[85%] ${
+                        msg.role === 'user'
+                          ? 'bg-indigo-600 text-white rounded-br-none shadow-md'
+                          : 'bg-surface/90 border border-border text-slate-200 rounded-bl-none shadow-sm flex-1'
+                      }`}
+                    >
+                      {/* Thought process */}
+                      {msg.thoughts && (
+                        <ThinkingBox thoughts={msg.thoughts} isThinking={false} />
+                      )}
+
+                      {/* Tool Calls */}
+                      {msg.tools && msg.tools.length > 0 && (
+                        <div className="space-y-1.5 my-2">
+                          {msg.tools.map((tool) => (
+                            <ToolCard key={tool.toolId || tool.name} tool={tool} />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Content */}
+                      {msg.role === 'user' ? (
+                        <div className="whitespace-pre-wrap font-mono">{msg.content}</div>
+                      ) : (
+                        <MarkdownRenderer content={msg.content} />
+                      )}
+                    </div>
+
+                    {msg.role === 'user' && (
+                      <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-300 mt-0.5 shadow-sm">
+                        <User className="w-4 h-4" />
+                      </div>
                     )}
                   </div>
-
-                  {msg.role === 'user' && (
-                    <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 text-slate-300 mt-0.5 shadow-sm">
-                      <User className="w-4 h-4" />
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
 
               {/* Active Live Stream Message */}
               {isStreaming && currentStream && (
@@ -415,7 +559,7 @@ export default function MainCanvas({
         </div>
       </div>
 
-      {/* 4. PROMPT INPUT BAR (ALIGNED & VERTICALLY CENTERED) */}
+      {/* 5. PROMPT INPUT BAR */}
       <div className="p-4 border-t border-border bg-surface/40 backdrop-blur select-none">
         <form onSubmit={handleSend} className="max-w-3xl mx-auto w-full flex items-center gap-2 bg-surface/90 border border-border rounded-xl px-3 py-2 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/40 transition-all shadow-sm">
           {/* Expanding Monospace Textarea */}
