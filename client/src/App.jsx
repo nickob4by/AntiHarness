@@ -7,11 +7,13 @@ import ResizeHandle from './components/ResizeHandle';
 import StatusBar from './components/StatusBar';
 import { 
   getSystemHealth, 
+  getUsage,
   getProjects,
   addProject,
   removeProject,
   getWorkspaceInfo, 
   getFileContent, 
+  saveFileContent,
   getSessions, 
   getSessionTranscript 
 } from './services/api';
@@ -19,10 +21,10 @@ import { HarnessWebSocket } from './services/websocket';
 
 export default function App() {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
-  
   const [systemHealth, setSystemHealth] = useState(null);
   const [workspace, setWorkspace] = useState(null);
-  
+  const [usageData, setUsageData] = useState(null);
+
   // Projects & Nested folder tree state
   const [projects, setProjects] = useState([]);
   const [projectFilesMap, setProjectFilesMap] = useState({});
@@ -46,29 +48,72 @@ export default function App() {
   const [openFiles, setOpenFiles] = useState([]);
   const [activeFile, setActiveFile] = useState(null);
   const [fileContents, setFileContents] = useState({});
+  const [originalContents, setOriginalContents] = useState({});
   const [liveAiModifiedFile, setLiveAiModifiedFile] = useState(null);
   
   // Sessions & Trajectory history
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [selectedSessionTranscript, setSelectedSessionTranscript] = useState(null);
 
-  // Chat and Streaming state
-  const [messages, setMessages] = useState([
+  // Multi-Agent Chat Tabs state
+  const [chatTabs, setChatTabs] = useState([
     {
-      role: 'assistant',
-      content: 'Welcome to **Antigravity Localhost Harness**!\n\n- **Model Selector**: Switch models and adjust thinking effort anytime directly in the chat header.\n- **Multi-Window**: Chat on the left and review files on the right.\n- **Toggle Views**: Collapse panes or the sidebar anytime for maximum focus.',
-    }
+      id: 'agent-main',
+      title: 'Main Agent',
+      messages: [
+        {
+          role: 'assistant',
+          content: 'Welcome to **Antigravity Localhost Harness**!\n\n- **Chat Tabs**: Run multiple agents and subagents concurrently.\n- **Bottom Controls**: Switch models and thinking efforts at the bottom of the chat.\n- **Multi-Window**: Chat on the left and review files on the right.',
+        }
+      ],
+      isStreaming: false,
+      currentStream: {
+        thoughts: '',
+        isThinking: false,
+        tools: [],
+        content: '',
+      },
+    },
   ]);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [currentStream, setCurrentStream] = useState({
-    thoughts: '',
-    isThinking: false,
-    tools: [],
-    content: '',
-  });
+  const [activeTabId, setActiveTabId] = useState('agent-main');
 
   const wsClientRef = useRef(null);
   const containerRef = useRef(null);
+
+  // Active chat tab
+  const activeTab = chatTabs.find((t) => t.id === activeTabId) || chatTabs[0];
+
+  const handleAddChatTab = () => {
+    const newId = `agent-${Date.now()}`;
+    const newTab = {
+      id: newId,
+      title: `Subagent #${chatTabs.length}`,
+      messages: [
+        {
+          role: 'assistant',
+          content: `Subagent #${chatTabs.length} is active. You can run tasks here independently while other agents work concurrently!`,
+        }
+      ],
+      isStreaming: false,
+      currentStream: {
+        thoughts: '',
+        isThinking: false,
+        tools: [],
+        content: '',
+      },
+    };
+    setChatTabs((prev) => [...prev, newTab]);
+    setActiveTabId(newId);
+  };
+
+  const handleCloseChatTab = (tabId) => {
+    if (chatTabs.length <= 1) return;
+    const filtered = chatTabs.filter((t) => t.id !== tabId);
+    setChatTabs(filtered);
+    if (activeTabId === tabId) {
+      setActiveTabId(filtered[filtered.length - 1].id);
+    }
+  };
 
   // Load project files for a specific project root
   const loadProjectFiles = async (projPath) => {
@@ -107,8 +152,6 @@ export default function App() {
       [dirPath]: !isCurrentlyExpanded,
     }));
   };
-
-  const [usageData, setUsageData] = useState(null);
 
   // Initialize data loading
   const loadData = async () => {
@@ -251,55 +294,81 @@ export default function App() {
 
     const ws = new HarnessWebSocket(
       (data) => {
+        const targetSessionId = data.sessionId || activeTabId;
+
+        const updateTabStream = (updater) => {
+          setChatTabs((prevTabs) =>
+            prevTabs.map((tab) => {
+              if (tab.id === targetSessionId || tab.id === activeTabId) {
+                return updater(tab);
+              }
+              return tab;
+            })
+          );
+        };
+
         switch (data.type) {
           case 'AGENT_STREAM_START':
-            setIsStreaming(true);
-            setCurrentStream({
-              thoughts: '',
-              isThinking: false,
-              tools: [],
-              content: '',
-            });
+            updateTabStream((tab) => ({
+              ...tab,
+              isStreaming: true,
+              currentStream: { thoughts: '', isThinking: false, tools: [], content: '' },
+            }));
             break;
 
           case 'AGENT_THOUGHT_START':
-            setCurrentStream((prev) => ({ ...prev, isThinking: true }));
+            updateTabStream((tab) => ({
+              ...tab,
+              currentStream: { ...tab.currentStream, isThinking: true },
+            }));
             break;
 
           case 'AGENT_THOUGHT_CHUNK':
-            setCurrentStream((prev) => ({
-              ...prev,
-              thoughts: prev.thoughts + data.payload.text,
+            updateTabStream((tab) => ({
+              ...tab,
+              currentStream: {
+                ...tab.currentStream,
+                thoughts: tab.currentStream.thoughts + data.payload.text,
+              },
             }));
             break;
 
           case 'AGENT_THOUGHT_END':
-            setCurrentStream((prev) => ({ ...prev, isThinking: false }));
+            updateTabStream((tab) => ({
+              ...tab,
+              currentStream: { ...tab.currentStream, isThinking: false },
+            }));
             break;
 
           case 'AGENT_TOOL_START':
-            setCurrentStream((prev) => ({
-              ...prev,
-              tools: [
-                ...prev.tools,
-                {
-                  toolId: data.payload.toolId,
-                  name: data.payload.name,
-                  args: data.payload.args,
-                  status: 'RUNNING',
-                },
-              ],
+            updateTabStream((tab) => ({
+              ...tab,
+              currentStream: {
+                ...tab.currentStream,
+                tools: [
+                  ...tab.currentStream.tools,
+                  {
+                    toolId: data.payload.toolId,
+                    name: data.payload.name,
+                    args: data.payload.args,
+                    status: 'RUNNING',
+                  },
+                ],
+              },
             }));
             break;
 
           case 'AGENT_TOOL_RESULT':
-            setCurrentStream((prev) => ({
-              ...prev,
-              tools: prev.tools.map((t) =>
-                t.toolId === data.payload.toolId
-                  ? { ...t, status: data.payload.status, output: data.payload.output }
-                  : t
-              ),
+            updateTabStream((tab) => ({
+              ...tab,
+              currentStream: {
+                ...tab.currentStream,
+                tools: tab.currentStream.tools.map((t) =>
+                  t.toolId === data.payload.toolId
+                    ? { ...t, status: data.payload.status, output: data.payload.output }
+                    : t
+                ),
+              },
             }));
             break;
 
@@ -322,57 +391,74 @@ export default function App() {
           }
 
           case 'AGENT_STREAM_CHUNK':
-            setCurrentStream((prev) => ({
-              ...prev,
-              content: prev.content + data.payload.text,
+            updateTabStream((tab) => ({
+              ...tab,
+              currentStream: {
+                ...tab.currentStream,
+                content: tab.currentStream.content + data.payload.text,
+              },
             }));
             break;
 
           case 'AGENT_STREAM_END': {
             const completedResponse = data.payload.completeResponse;
-            setCurrentStream((prev) => {
+            updateTabStream((tab) => {
               const finalMessage = {
                 role: 'assistant',
-                content: completedResponse || prev.content,
-                thoughts: prev.thoughts || null,
-                tools: prev.tools || [],
+                content: completedResponse || tab.currentStream.content,
+                thoughts: tab.currentStream.thoughts || null,
+                tools: tab.currentStream.tools || [],
               };
-              setMessages((prevMsgs) => [...prevMsgs, finalMessage]);
-              return { thoughts: '', isThinking: false, tools: [], content: '' };
+              return {
+                ...tab,
+                isStreaming: false,
+                messages: [...tab.messages, finalMessage],
+                currentStream: { thoughts: '', isThinking: false, tools: [], content: '' },
+              };
             });
-            setIsStreaming(false);
             loadData();
             break;
           }
 
           case 'AGENT_STREAM_STOPPED':
-            setCurrentStream((prev) => {
-              if (prev.content || prev.thoughts || prev.tools.length > 0) {
-                const interruptedMessage = {
-                  role: 'assistant',
-                  content: prev.content + '\n\n*(Stream stopped by user)*',
-                  thoughts: prev.thoughts || null,
-                  tools: prev.tools || [],
-                };
-                setMessages((prevMsgs) => [...prevMsgs, interruptedMessage]);
-              }
-              return { thoughts: '', isThinking: false, tools: [], content: '' };
+            updateTabStream((tab) => {
+              const current = tab.currentStream;
+              const hasContent = current.content || current.thoughts || current.tools.length > 0;
+              const newMsgs = hasContent
+                ? [
+                    ...tab.messages,
+                    {
+                      role: 'assistant',
+                      content: current.content + '\n\n*(Stream stopped by user)*',
+                      thoughts: current.thoughts || null,
+                      tools: current.tools || [],
+                    },
+                  ]
+                : tab.messages;
+              return {
+                ...tab,
+                isStreaming: false,
+                messages: newMsgs,
+                currentStream: { thoughts: '', isThinking: false, tools: [], content: '' },
+              };
             });
-            setIsStreaming(false);
             break;
 
           case 'AGENT_STREAM_ERROR':
-            setCurrentStream((prev) => {
-              const errorMessage = {
-                role: 'assistant',
-                content: `⚠️ **Agent Execution Error**: ${data.payload.error}`,
-                thoughts: prev.thoughts || null,
-                tools: prev.tools || [],
-              };
-              setMessages((prevMsgs) => [...prevMsgs, errorMessage]);
-              return { thoughts: '', isThinking: false, tools: [], content: '' };
-            });
-            setIsStreaming(false);
+            updateTabStream((tab) => ({
+              ...tab,
+              isStreaming: false,
+              messages: [
+                ...tab.messages,
+                {
+                  role: 'assistant',
+                  content: `⚠️ **Agent Execution Error**: ${data.payload.error}`,
+                  thoughts: tab.currentStream.thoughts || null,
+                  tools: tab.currentStream.tools || [],
+                },
+              ],
+              currentStream: { thoughts: '', isThinking: false, tools: [], content: '' },
+            }));
             break;
 
           default:
@@ -389,9 +475,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       ws.disconnect();
     };
-  }, []);
-
-  const [originalContents, setOriginalContents] = useState({});
+  }, [activeTabId]);
 
   const handleOpenFile = async (file) => {
     if (file.isDirectory) return;
@@ -444,23 +528,28 @@ export default function App() {
   };
 
   const handleSendMessage = (text, options = {}) => {
-    if (!text.trim() || isStreaming) return;
+    if (!text.trim() || activeTab.isStreaming) return;
 
     const userMsg = { role: 'user', content: text };
-    setMessages((prev) => [...prev, userMsg]);
-    setIsStreaming(true);
+    setChatTabs((prev) =>
+      prev.map((t) =>
+        t.id === activeTabId
+          ? { ...t, messages: [...t.messages, userMsg], isStreaming: true }
+          : t
+      )
+    );
 
     wsClientRef.current?.send('RUN_AGENT_PROMPT', {
       prompt: text,
       workspacePath: workspace?.workspacePath || 'D:\\AntiG',
-      sessionId: selectedSessionId || `session-${Date.now()}`,
+      sessionId: activeTabId,
       model: options.model || 'Gemini 3.7 Flash',
       thinkingEffort: options.thinkingEffort || 'medium',
     });
   };
 
   const handleStopStream = () => {
-    wsClientRef.current?.send('STOP_AGENT_PROMPT', {});
+    wsClientRef.current?.send('STOP_AGENT_PROMPT', { sessionId: activeTabId });
   };
 
   return (
@@ -506,7 +595,7 @@ export default function App() {
           </>
         )}
 
-        {/* 2. Center Main Canvas (Chat + Model Selector + History Summary) */}
+        {/* 2. Center Main Canvas with Multi-Agent Chat Tabs & Bottom Controls */}
         <div 
           style={{ 
             width: showFilePane 
@@ -520,11 +609,16 @@ export default function App() {
           <MainCanvas
             selectedSessionTranscript={selectedSessionTranscript}
             selectedSessionId={selectedSessionId}
-            messages={messages}
-            currentStream={currentStream}
+            chatTabs={chatTabs}
+            activeTabId={activeTabId}
+            onSelectChatTab={(id) => setActiveTabId(id)}
+            onAddChatTab={handleAddChatTab}
+            onCloseChatTab={handleCloseChatTab}
+            messages={activeTab.messages}
+            currentStream={activeTab.currentStream}
             onSendMessage={handleSendMessage}
             onStopStream={handleStopStream}
-            isStreaming={isStreaming}
+            isStreaming={activeTab.isStreaming}
             workspace={workspace}
           />
         </div>

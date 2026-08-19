@@ -16,7 +16,9 @@ import {
   Search, 
   X, 
   ArrowUp, 
-  ArrowDown
+  ArrowDown,
+  Plus,
+  MessageSquare
 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ThinkingBox from './ThinkingBox';
@@ -42,7 +44,14 @@ const THINKING_EFFORTS = [
 export default function MainCanvas({
   selectedSessionTranscript,
   selectedSessionId,
-  messages,
+  // Chat tabs props
+  chatTabs = [],
+  activeTabId,
+  onSelectChatTab,
+  onAddChatTab,
+  onCloseChatTab,
+  // Active tab state
+  messages = [],
   currentStream,
   onSendMessage,
   onStopStream,
@@ -158,101 +167,56 @@ export default function MainCanvas({
 
   return (
     <main className="flex-1 flex flex-col h-full overflow-hidden bg-background font-mono">
-      {/* 1. CHAT HEADER CONTROLS */}
-      <div className="h-10 px-3 border-b border-border/80 bg-surface/60 backdrop-blur flex items-center justify-between text-xs select-none z-20">
-        {/* Left: Model & Thinking Effort Selectors */}
-        <div className="flex items-center gap-2">
-          {/* Model Selector Dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                setIsModelDropdownOpen(!isModelDropdownOpen);
-                setIsThinkingDropdownOpen(false);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface border border-border/70 text-slate-200 hover:text-white hover:border-indigo-500/40 transition-all text-[11px]"
-            >
-              <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="font-semibold text-slate-100">{currentModelName}</span>
-              <ChevronDown className="w-3 h-3 text-slate-400" />
-            </button>
-
-            {isModelDropdownOpen && (
-              <div 
-                className="absolute left-0 top-full mt-1 w-64 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
-                onMouseLeave={() => setIsModelDropdownOpen(false)}
+      {/* 1. TOP CHAT TABS BAR */}
+      <div className="h-10 px-2 border-b border-border/80 bg-surface/80 backdrop-blur flex items-center justify-between text-xs select-none z-20 overflow-x-auto">
+        {/* Left: Chat Agent Tabs */}
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+          {chatTabs.map((tab) => {
+            const isActive = tab.id === activeTabId;
+            return (
+              <div
+                key={tab.id}
+                onClick={() => onSelectChatTab(tab.id)}
+                className={`flex items-center gap-2 px-3 py-1.5 text-xs rounded-t-lg border-t-2 transition-all cursor-pointer truncate max-w-[190px] ${
+                  isActive
+                    ? 'bg-background border-indigo-500 text-white font-medium shadow-sm'
+                    : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
+                }`}
               >
-                <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                  Select Model
-                </div>
-                {AVAILABLE_MODELS.map((model) => (
-                  <button
-                    key={model.id}
-                    onClick={() => {
-                      setSelectedModel(model.id);
-                      setIsModelDropdownOpen(false);
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors text-[11px] ${
-                      selectedModel === model.id
-                        ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                        : 'text-slate-300 hover:bg-surface-hover hover:text-white'
-                    }`}
-                  >
-                    <div className="font-medium">{model.name}</div>
-                    <div className="text-[9px] opacity-75 font-sans truncate">{model.desc}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+                <Bot className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-indigo-400' : 'text-slate-500'}`} />
+                <span className="truncate">{tab.title}</span>
 
-          {/* Thinking Effort Dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                setIsThinkingDropdownOpen(!isThinkingDropdownOpen);
-                setIsModelDropdownOpen(false);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface border border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40 transition-all text-[11px]"
-            >
-              <Brain className="w-3.5 h-3.5 text-indigo-400" />
-              <span>{currentThinkingLabel}</span>
-              <ChevronDown className="w-3 h-3 text-slate-400" />
-            </button>
+                {tab.isStreaming && (
+                  <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping shrink-0" />
+                )}
 
-            {isThinkingDropdownOpen && (
-              <div 
-                className="absolute left-0 top-full mt-1 w-56 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
-                onMouseLeave={() => setIsThinkingDropdownOpen(false)}
-              >
-                <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                  Thinking Effort
-                </div>
-                {THINKING_EFFORTS.map((effort) => (
+                {chatTabs.length > 1 && (
                   <button
-                    key={effort.id}
-                    onClick={() => {
-                      setThinkingEffort(effort.id);
-                      setIsThinkingDropdownOpen(false);
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCloseChatTab(tab.id);
                     }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors text-[11px] ${
-                      thinkingEffort === effort.id
-                        ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                        : 'text-slate-300 hover:bg-surface-hover hover:text-white'
-                    }`}
+                    className="p-0.5 hover:bg-surface rounded text-slate-400 hover:text-slate-200 ml-0.5"
                   >
-                    <div className="font-medium">{effort.label}</div>
-                    <div className="text-[9px] opacity-75 font-sans truncate">{effort.desc}</div>
+                    <X className="w-3 h-3" />
                   </button>
-                ))}
+                )}
               </div>
-            )}
-          </div>
+            );
+          })}
+
+          {/* Plus (+) Button to spawn new agent tab */}
+          <button
+            onClick={onAddChatTab}
+            title="Spawn new Agent / Subagent Tab"
+            className="p-1.5 hover:bg-surface-hover rounded-md text-slate-400 hover:text-indigo-300 transition-colors ml-0.5"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        {/* Right: Chat Search & History Summary Toggle */}
-        <div className="flex items-center gap-1.5">
+        {/* Right: Search & History Summary Toggle */}
+        <div className="flex items-center gap-1.5 shrink-0 pl-2">
           {/* Chat Search Toggle Button */}
           <button
             type="button"
@@ -467,7 +431,7 @@ export default function MainCanvas({
 
                 return (
                   <div 
-                    key={idx}
+                    key={idx} 
                     ref={(el) => (messageRefs.current[idx] = el)}
                     className={`flex gap-3 w-full transition-all ${
                       msg.role === 'user' ? 'justify-end' : 'justify-start'
@@ -559,9 +523,9 @@ export default function MainCanvas({
         </div>
       </div>
 
-      {/* 5. PROMPT INPUT BAR */}
+      {/* 5. PROMPT INPUT BAR WITH BOTTOM MODEL & THINKING SELECTORS */}
       <div className="p-4 border-t border-border bg-surface/40 backdrop-blur select-none">
-        <form onSubmit={handleSend} className="max-w-3xl mx-auto w-full flex items-center gap-2 bg-surface/90 border border-border rounded-xl px-3 py-2 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/40 transition-all shadow-sm">
+        <form onSubmit={handleSend} className="max-w-3xl mx-auto w-full bg-surface/90 border border-border rounded-xl p-2.5 space-y-2 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/40 transition-all shadow-sm">
           {/* Expanding Monospace Textarea */}
           <textarea
             ref={textareaRef}
@@ -569,31 +533,125 @@ export default function MainCanvas({
             onChange={(e) => setInputPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder="Message Antigravity or type a command... (Shift+Enter for newline)"
-            className="flex-1 bg-transparent border-0 text-xs text-white placeholder-slate-500 focus:outline-none resize-none font-mono py-1 px-1 leading-relaxed max-h-32"
+            placeholder="Message Antigravity or give instructions to this agent... (Shift+Enter for newline)"
+            className="w-full bg-transparent border-0 text-xs text-white placeholder-slate-500 focus:outline-none resize-none font-mono px-1 py-0.5 leading-relaxed max-h-32"
           />
 
-          {/* Centered Action Button */}
-          <div className="flex items-center shrink-0">
-            {isStreaming ? (
-              <button
-                type="button"
-                onClick={onStopStream}
-                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all shadow-sm font-mono h-8"
-              >
-                <StopCircle className="w-3.5 h-3.5" />
-                <span>Stop</span>
-              </button>
-            ) : (
-              <button
-                type="submit"
-                disabled={!inputPrompt.trim()}
-                className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white rounded-lg text-xs font-medium flex items-center justify-center gap-1.5 transition-all shadow-sm font-mono h-8"
-              >
-                <span>Send</span>
-                <Send className="w-3.5 h-3.5" />
-              </button>
-            )}
+          {/* Bottom Toolbar: Model Selector, Thinking Effort & Send Button */}
+          <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[11px]">
+            {/* Left: Model & Thinking Selectors positioned at bottom */}
+            <div className="flex items-center gap-1.5">
+              {/* Model Dropdown */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsModelDropdownOpen(!isModelDropdownOpen);
+                    setIsThinkingDropdownOpen(false);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40 transition-all text-[10px]"
+                >
+                  <Cpu className="w-3 h-3 text-indigo-400" />
+                  <span className="font-medium text-slate-200">{currentModelName}</span>
+                  <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                </button>
+
+                {isModelDropdownOpen && (
+                  <div 
+                    className="absolute left-0 bottom-full mb-1.5 w-64 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
+                    onMouseLeave={() => setIsModelDropdownOpen(false)}
+                  >
+                    <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                      Select Model
+                    </div>
+                    {AVAILABLE_MODELS.map((model) => (
+                      <button
+                        key={model.id}
+                        onClick={() => {
+                          setSelectedModel(model.id);
+                          setIsModelDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg transition-colors text-[11px] ${
+                          selectedModel === model.id
+                            ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                            : 'text-slate-300 hover:bg-surface-hover hover:text-white'
+                        }`}
+                      >
+                        <div className="font-medium">{model.name}</div>
+                        <div className="text-[9px] opacity-75 font-sans truncate">{model.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Thinking Effort Dropdown */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsThinkingDropdownOpen(!isThinkingDropdownOpen);
+                    setIsModelDropdownOpen(false);
+                  }}
+                  className="flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40 transition-all text-[10px]"
+                >
+                  <Brain className="w-3 h-3 text-indigo-400" />
+                  <span>{currentThinkingLabel}</span>
+                  <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                </button>
+
+                {isThinkingDropdownOpen && (
+                  <div 
+                    className="absolute left-0 bottom-full mb-1.5 w-56 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
+                    onMouseLeave={() => setIsThinkingDropdownOpen(false)}
+                  >
+                    <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                      Thinking Effort
+                    </div>
+                    {THINKING_EFFORTS.map((effort) => (
+                      <button
+                        key={effort.id}
+                        onClick={() => {
+                          setThinkingEffort(effort.id);
+                          setIsThinkingDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-2 py-1.5 rounded-lg transition-colors text-[11px] ${
+                          thinkingEffort === effort.id
+                            ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                            : 'text-slate-300 hover:bg-surface-hover hover:text-white'
+                        }`}
+                      >
+                        <div className="font-medium">{effort.label}</div>
+                        <div className="text-[9px] opacity-75 font-sans truncate">{effort.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Send / Stop Button */}
+            <div className="flex items-center">
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={onStopStream}
+                  className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-[11px] font-medium flex items-center gap-1.5 transition-all shadow-sm font-mono h-7"
+                >
+                  <StopCircle className="w-3 h-3" />
+                  <span>Stop</span>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!inputPrompt.trim()}
+                  className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white rounded-lg text-[11px] font-medium flex items-center gap-1.5 transition-all shadow-sm font-mono h-7"
+                >
+                  <span>Send</span>
+                  <Send className="w-3 h-3" />
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>
