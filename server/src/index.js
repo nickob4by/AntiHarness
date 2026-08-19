@@ -4,6 +4,7 @@ import cors from 'cors';
 import systemRoutes from './routes/system.js';
 import workspaceRoutes from './routes/workspace.js';
 import sessionRoutes from './routes/sessions.js';
+import authRoutes from './routes/auth.js';
 import { setupWebSocket } from './ws.js';
 
 const app = express();
@@ -13,6 +14,7 @@ app.use(cors());
 app.use(express.json());
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/workspace', workspaceRoutes);
 app.use('/api/sessions', sessionRoutes);
