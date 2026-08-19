@@ -3,6 +3,7 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import MainCanvas from './components/MainCanvas';
 import FileViewerPane from './components/FileViewerPane';
+import TerminalPane from './components/TerminalPane';
 import ResizeHandle from './components/ResizeHandle';
 import StatusBar from './components/StatusBar';
 import { 
@@ -40,6 +41,10 @@ export default function App() {
   const [isFilePaneExpanded, setIsFilePaneExpanded] = useState(false);
   const [filePaneRatio, setFilePaneRatio] = useState(50); // percentage (20% - 80%)
 
+  // Terminal Drawer state
+  const [showTerminal, setShowTerminal] = useState(false);
+  const [terminalHeight, setTerminalHeight] = useState(230); // in pixels
+
   // Dragging states
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
@@ -63,7 +68,7 @@ export default function App() {
       messages: [
         {
           role: 'assistant',
-          content: 'Welcome to **Antigravity Localhost Harness**!\n\n- **Chat Tabs**: Run multiple agents and subagents concurrently.\n- **Bottom Controls**: Switch models and thinking efforts at the bottom of the chat.\n- **Multi-Window**: Chat on the left and review files on the right.',
+          content: 'Welcome to **Antigravity Localhost Harness**!\n\n- **Interactive Terminal**: Press `Ctrl+\`` or click Terminal below to run commands in real time.\n- **Chat Tabs**: Run multiple agents and subagents concurrently.\n- **Bottom Controls**: Switch models and thinking efforts at the bottom of the chat.\n- **Multi-Window**: Chat on the left and review files on the right.',
         }
       ],
       isStreaming: false,
@@ -288,6 +293,10 @@ export default function App() {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
         e.preventDefault();
         setShowSidebar((prev) => !prev);
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === '`' || e.key === '~')) {
+        e.preventDefault();
+        setShowTerminal((prev) => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -562,6 +571,8 @@ export default function App() {
         onToggleFilePane={() => setShowFilePane(!showFilePane)}
         showSidebar={showSidebar}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
+        showTerminal={showTerminal}
+        onToggleTerminal={() => setShowTerminal(!showTerminal)}
       />
 
       {/* Main Workspace Layout with Resizers */}
@@ -658,11 +669,23 @@ export default function App() {
         )}
       </div>
 
+      {/* Collapsible Interactive Terminal Pane (Phase 4) */}
+      <TerminalPane
+        isOpen={showTerminal}
+        onClose={() => setShowTerminal(false)}
+        wsClient={wsClientRef.current}
+        workspacePath={workspace?.workspacePath || 'D:\\AntiG'}
+        height={terminalHeight}
+        onHeightChange={setTerminalHeight}
+      />
+
       {/* Bottom Status Bar */}
       <StatusBar
         connectionStatus={connectionStatus}
         workspace={workspace}
         usageData={usageData}
+        showTerminal={showTerminal}
+        onToggleTerminal={() => setShowTerminal(!showTerminal)}
       />
     </div>
   );

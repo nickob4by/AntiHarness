@@ -4,6 +4,17 @@ export class HarnessWebSocket {
     this.onMessage = onMessage;
     this.onStatusChange = onStatusChange;
     this.reconnectTimer = null;
+    this.listeners = new Set();
+  }
+
+  addListener(cb) {
+    if (typeof cb === 'function') {
+      this.listeners.add(cb);
+    }
+  }
+
+  removeListener(cb) {
+    this.listeners.delete(cb);
   }
 
   connect() {
@@ -22,7 +33,14 @@ export class HarnessWebSocket {
       this.ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          this.onMessage(data);
+          if (this.onMessage) this.onMessage(data);
+          this.listeners.forEach((cb) => {
+            try {
+              cb(data);
+            } catch (err) {
+              console.error('Error in WS listener:', err);
+            }
+          });
         } catch (e) {
           console.error('WS Parse Error', e);
         }

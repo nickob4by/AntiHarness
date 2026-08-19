@@ -1,5 +1,6 @@
 import { WebSocketServer } from 'ws';
 import { AgentEngine, stopSession } from './agentEngine.js';
+import { TerminalRunner } from './terminalRunner.js';
 
 export function setupWebSocket(server) {
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -8,6 +9,7 @@ export function setupWebSocket(server) {
     console.log('Client connected to WebSocket harness');
 
     let currentAgent = null;
+    let terminalRunner = null;
 
     ws.send(
       JSON.stringify({
@@ -22,7 +24,6 @@ export function setupWebSocket(server) {
     ws.on('message', async (message) => {
       try {
         const data = JSON.parse(message.toString());
-        console.log('WebSocket incoming action:', data.type);
 
         switch (data.type) {
           case 'PING':
@@ -55,6 +56,33 @@ export function setupWebSocket(server) {
             break;
           }
 
+          case 'TERMINAL_INIT': {
+            const { workspacePath } = data.payload || {};
+            if (!terminalRunner) {
+              terminalRunner = new TerminalRunner(ws, workspacePath || process.cwd());
+            } else if (workspacePath) {
+              terminalRunner.setCwd(workspacePath);
+            }
+            break;
+          }
+
+          case 'TERMINAL_INPUT': {
+            const { input } = data.payload || {};
+            if (terminalRunner && input !== undefined) {
+              terminalRunner.write(input);
+            }
+            break;
+          }
+
+          case 'TERMINAL_RESTART': {
+            const { workspacePath } = data.payload || {};
+            if (terminalRunner) {
+              terminalRunner.destroy();
+            }
+            terminalRunner = new TerminalRunner(ws, workspacePath || process.cwd());
+            break;
+          }
+
           default:
             ws.send(
               JSON.stringify({
@@ -72,6 +100,10 @@ export function setupWebSocket(server) {
       console.log('Client disconnected from WebSocket harness');
       if (currentAgent) {
         currentAgent.abort();
+      }
+      if (terminalRunner) {
+        terminalRunner.destroy();
+        terminalRunner = null;
       }
     });
   });

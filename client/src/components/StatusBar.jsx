@@ -4,10 +4,16 @@ import {
   Clock, 
   Calendar, 
   Zap,
-  Activity
+  Terminal
 } from 'lucide-react';
 
-export default function StatusBar({ connectionStatus, workspace, usageData }) {
+export default function StatusBar({ 
+  connectionStatus, 
+  workspace, 
+  usageData,
+  showTerminal,
+  onToggleTerminal 
+}) {
   const [currentTime, setCurrentTime] = useState(new Date());
 
   useEffect(() => {
@@ -50,6 +56,20 @@ export default function StatusBar({ connectionStatus, workspace, usageData }) {
             {connectionStatus === 'connected' ? 'Connected' : 'Offline'}
           </span>
         </div>
+
+        {/* Terminal Quick Button */}
+        <button
+          onClick={onToggleTerminal}
+          className={`hidden md:flex items-center gap-1 px-2 py-0.2 rounded border transition-colors ${
+            showTerminal
+              ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300 font-semibold'
+              : 'bg-surface border-border/60 text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
+          }`}
+          title="Toggle Terminal Drawer (Ctrl+`)"
+        >
+          <Terminal className="w-3 h-3 text-indigo-400" />
+          <span className="text-[10px]">Terminal</span>
+        </button>
       </div>
 
       {/* Right: Exact Quota Percentage Format & Live Clock */}

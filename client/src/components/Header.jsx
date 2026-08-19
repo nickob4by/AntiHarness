@@ -5,9 +5,8 @@ import {
   RefreshCw,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
-  Columns
+  Columns,
+  Terminal
 } from 'lucide-react';
 
 export default function Header({ 
@@ -17,6 +16,8 @@ export default function Header({
   onToggleFilePane,
   showSidebar,
   onToggleSidebar,
+  showTerminal,
+  onToggleTerminal,
 }) {
   return (
     <header className="h-12 border-b border-border bg-surface/90 backdrop-blur px-3 flex items-center justify-between select-none z-10 font-mono">
@@ -58,6 +59,19 @@ export default function Header({
 
       {/* Right: Clean & Simple Action Buttons */}
       <div className="flex items-center gap-1.5">
+        {/* Terminal Toggle Button */}
+        <button
+          onClick={onToggleTerminal}
+          title={showTerminal ? "Hide Terminal (Ctrl+`)" : "Show Terminal (Ctrl+`)"}
+          className={`p-1.5 rounded-lg border transition-all ${
+            showTerminal
+              ? 'bg-indigo-600/20 border-indigo-500/40 text-indigo-300 shadow-sm'
+              : 'bg-surface border-border text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
+          }`}
+        >
+          <Terminal className="w-4 h-4" />
+        </button>
+
         {/* Simple Icon Button to Toggle File Pane */}
         <button
           onClick={onToggleFilePane}
