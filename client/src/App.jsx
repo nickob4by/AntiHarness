@@ -46,6 +46,7 @@ export default function App() {
   const [openFiles, setOpenFiles] = useState([]);
   const [activeFile, setActiveFile] = useState(null);
   const [fileContents, setFileContents] = useState({});
+  const [liveAiModifiedFile, setLiveAiModifiedFile] = useState(null);
   
   // Sessions & Trajectory history
   const [selectedSessionId, setSelectedSessionId] = useState(null);
@@ -302,6 +303,24 @@ export default function App() {
             }));
             break;
 
+          case 'AGENT_FILE_EDIT_LIVE': {
+            const { filePath, fileName, content, previousContent } = data.payload;
+            setShowFilePane(true);
+            const targetFileObj = { path: filePath, name: fileName };
+            setOpenFiles((prev) => {
+              if (!prev.some((f) => f.path === filePath)) {
+                return [...prev, targetFileObj];
+              }
+              return prev;
+            });
+            setActiveFile(targetFileObj);
+            setFileContents((prev) => ({ ...prev, [filePath]: content }));
+            setOriginalContents((prev) => ({ ...prev, [filePath]: previousContent || prev[filePath] || '' }));
+            setLiveAiModifiedFile(filePath);
+            loadData();
+            break;
+          }
+
           case 'AGENT_STREAM_CHUNK':
             setCurrentStream((prev) => ({
               ...prev,
@@ -532,6 +551,7 @@ export default function App() {
               activeFile={activeFile}
               fileContents={fileContents}
               originalContents={originalContents}
+              liveAiModifiedFile={liveAiModifiedFile}
               onSelectFileTab={(file) => setActiveFile(file)}
               onCloseFileTab={handleCloseFileTab}
               onReloadFile={handleReloadFile}

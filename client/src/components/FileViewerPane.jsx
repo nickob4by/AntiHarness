@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FileText, 
   X, 
@@ -6,12 +6,14 @@ import {
   Check, 
   Maximize2, 
   Minimize2, 
-  Code2, 
   FolderGit2, 
   Save,
   GitCompare,
   RefreshCw,
-  Edit3
+  Edit3,
+  Globe,
+  Sparkles,
+  ExternalLink
 } from 'lucide-react';
 import DiffViewer from './DiffViewer';
 
@@ -20,6 +22,7 @@ export default function FileViewerPane({
   activeFile,
   fileContents,
   originalContents = {},
+  liveAiModifiedFile,
   onSelectFileTab,
   onCloseFileTab,
   onReloadFile,
@@ -29,7 +32,7 @@ export default function FileViewerPane({
   onClosePane,
 }) {
   const [copied, setCopied] = useState(false);
-  const [viewMode, setViewMode] = useState('editor'); // 'editor' | 'diff'
+  const [viewMode, setViewMode] = useState('editor'); // 'editor' | 'diff' | 'preview'
   const [localCode, setLocalCode] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -38,12 +41,21 @@ export default function FileViewerPane({
   const diskContent = activePath ? fileContents[activePath] || '' : '';
   const originalCode = activePath ? originalContents[activePath] || diskContent : '';
 
+  const isWebFile = useMemo(() => {
+    if (!activeFile) return false;
+    const name = activeFile.name?.toLowerCase() || '';
+    return name.endsWith('.html') || name.endsWith('.htm') || name.endsWith('.svg');
+  }, [activeFile]);
+
   useEffect(() => {
     if (activePath) {
       setLocalCode(fileContents[activePath] || '');
-      setViewMode('editor');
+      // If it's an HTML file and AI just edited it, auto-switch to preview or maintain preference
+      if (liveAiModifiedFile === activePath && isWebFile) {
+        setViewMode('preview');
+      }
     }
-  }, [activePath, fileContents]);
+  }, [activePath, fileContents, liveAiModifiedFile, isWebFile]);
 
   // Keyboard shortcut Ctrl+S / Cmd+S for saving
   useEffect(() => {
@@ -81,7 +93,6 @@ export default function FileViewerPane({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Handle tab key in code editor
   const handleEditorKeyDown = (e) => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -103,13 +114,14 @@ export default function FileViewerPane({
         </div>
         <p className="font-medium text-slate-300">No File Selected</p>
         <p className="text-[11px] text-slate-500 mt-1 max-w-[220px]">
-          Click any file in the sidebar to view, edit, or compare diffs side-by-side.
+          Files and live webpage previews modified by the AI will open here automatically.
         </p>
       </div>
     );
   }
 
   const lineCount = (localCode.match(/\n/g) || []).length + 1;
+  const isAiActiveOnThisFile = liveAiModifiedFile === activePath;
 
   return (
     <div className="flex flex-col h-full bg-[#0a0d14] border-l border-border select-none overflow-hidden font-mono">
@@ -119,26 +131,33 @@ export default function FileViewerPane({
           {openFiles.map((file) => {
             const isActive = activeFile?.path === file.path;
             const fileIsDirty = file.path === activePath ? isDirty : false;
+            const fileIsAiLive = liveAiModifiedFile === file.path;
 
             return (
               <div
                 key={file.path}
                 onClick={() => onSelectFileTab(file)}
-                className={`flex items-center gap-2 px-3 py-1 text-xs rounded-t border-t-2 transition-all cursor-pointer truncate max-w-[180px] ${
+                className={`flex items-center gap-1.5 px-3 py-1 text-xs rounded-t border-t-2 transition-all cursor-pointer truncate max-w-[190px] ${
                   isActive
                     ? 'bg-[#0a0d14] border-indigo-500 text-white font-medium shadow-sm'
                     : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
                 }`}
               >
-                <FileText className={`w-3.5 h-3.5 ${isActive ? 'text-indigo-400' : 'text-slate-500'}`} />
+                {fileIsAiLive ? (
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin shrink-0" />
+                ) : (
+                  <FileText className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-indigo-400' : 'text-slate-500'}`} />
+                )}
+                
                 <span className="truncate">{file.name}</span>
                 {fileIsDirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" title="Unsaved changes" />}
+                
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onCloseFileTab(file);
                   }}
-                  className="p-0.5 hover:bg-surface-hover rounded text-slate-400 hover:text-slate-200"
+                  className="p-0.5 hover:bg-surface-hover rounded text-slate-400 hover:text-slate-200 ml-1"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -149,7 +168,7 @@ export default function FileViewerPane({
 
         {/* Action Controls */}
         <div className="flex items-center gap-1.5 pl-2 text-slate-400">
-          {/* Mode Toggle: Code Editor vs Diff View */}
+          {/* Mode Switcher: Edit | Diff | Preview */}
           <div className="flex items-center bg-surface border border-border/80 rounded-md p-0.5 text-[10px]">
             <button
               onClick={() => setViewMode('editor')}
@@ -171,6 +190,18 @@ export default function FileViewerPane({
               <GitCompare className="w-3 h-3" />
               <span>Diff</span>
             </button>
+            {isWebFile && (
+              <button
+                onClick={() => setViewMode('preview')}
+                className={`px-2 py-0.5 rounded transition-colors flex items-center gap-1 ${
+                  viewMode === 'preview' ? 'bg-indigo-600 text-white font-medium shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+                title="Live Webpage Preview"
+              >
+                <Globe className="w-3 h-3 text-emerald-400" />
+                <span>Preview</span>
+              </button>
+            )}
           </div>
 
           {/* Save Button */}
@@ -215,16 +246,24 @@ export default function FileViewerPane({
             title="Close File Pane"
             className="p-1 hover:bg-surface-hover hover:text-rose-400 rounded transition-colors"
           >
-            <X className="w-3.5 h-3.5" />
+            <X className="w-3 h-3" />
           </button>
         </div>
       </div>
 
-      {/* Path Breadcrumb & Status */}
+      {/* Path Breadcrumb & Live Status */}
       {activeFile && (
         <div className="px-3 py-1.5 bg-surface/40 border-b border-border/60 text-[11px] text-slate-400 flex items-center justify-between">
-          <span className="truncate">{activeFile.path}</span>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 truncate">
+            <span className="truncate">{activeFile.path}</span>
+            {isAiActiveOnThisFile && (
+              <span className="px-2 py-0.2 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-semibold text-[10px] flex items-center gap-1 animate-pulse">
+                <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                Live AI Edit
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
             {isDirty && (
               <span className="text-[10px] text-amber-400 font-semibold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
@@ -238,8 +277,18 @@ export default function FileViewerPane({
         </div>
       )}
 
-      {/* View Content: Live Code Editor vs Diff View */}
-      {viewMode === 'diff' ? (
+      {/* View Content: Edit | Diff | Preview */}
+      {viewMode === 'preview' && isWebFile ? (
+        <div className="flex-1 bg-white overflow-hidden relative flex flex-col">
+          {/* Webpage iframe Preview */}
+          <iframe
+            title="Live Webpage Preview"
+            srcDoc={localCode}
+            sandbox="allow-scripts allow-same-origin allow-forms"
+            className="w-full h-full border-0 bg-white"
+          />
+        </div>
+      ) : viewMode === 'diff' ? (
         <DiffViewer 
           oldCode={originalCode} 
           newCode={localCode} 
