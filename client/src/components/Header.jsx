@@ -9,7 +9,8 @@ import {
   User,
   LogOut,
   ChevronDown,
-  ShieldCheck
+  ShieldCheck,
+  Sparkles
 } from 'lucide-react';
 
 export default function Header({ 
