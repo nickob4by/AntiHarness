@@ -256,7 +256,7 @@ export default function CodebaseGraphViewer({
             {error}
           </div>
         ) : (
-          <div className="max-w-5xl mx-auto space-y-6">
+          <div className="max-w-7xl mx-auto space-y-6">
             {/* TAB 1: Visual Mermaid Architecture Graph */}
             {activeTab === 'diagram' && (
               <div className="space-y-4">
@@ -271,8 +271,12 @@ export default function CodebaseGraphViewer({
                     </span>
                   </div>
 
-                  <div className="min-h-[400px]">
-                    <MermaidRenderer chart={graphData?.mermaidGraph} />
+                  <div className="min-h-[620px]">
+                    <MermaidRenderer 
+                      chart={graphData?.mermaidGraph} 
+                      minHeight="min-h-[620px]" 
+                      title="AntiHarness Full-Stack System Architecture" 
+                    />
                   </div>
                 </div>
               </div>

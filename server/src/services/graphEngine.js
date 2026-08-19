@@ -211,27 +211,61 @@ export async function generateCodebaseGraph(workspaceRoot, maxDepth = 6) {
     }
   });
 
-  // Generate Mermaid Architecture Flow Diagram
-  let mermaidGraph = `graph TD\n`;
-  mermaidGraph += `  subgraph Workspace["📁 ${path.basename(resolvedRoot)}"]\n`;
+  // Generate Comprehensive, High-Fidelity Mermaid Architecture Diagram
+  let mermaidGraph = `graph TB\n`;
 
-  Object.entries(folderGroups).slice(0, 6).forEach(([dirName, files], idx) => {
-    const dirId = `dir_${idx}`;
-    mermaidGraph += `    ${dirId}["📁 ${dirName} (${files.length} files)"]\n`;
-  });
+  // 1. Frontend Subgraph
+  mermaidGraph += `  subgraph Frontend["💻 Frontend Layer (React 18 + Vite)"]\n`;
+  mermaidGraph += `    UI_App["🚀 App.jsx<br/><i>(State & Multi-Pane Layout)</i>"]:::ui\n`;
+  mermaidGraph += `    UI_Canvas["💬 MainCanvas.jsx<br/><i>(Dual-Stream Chat & Terminal)</i>"]:::ui\n`;
+  mermaidGraph += `    UI_Editor["📝 FileViewerPane.jsx<br/><i>(Monaco Diff & Live Editor)</i>"]:::ui\n`;
+  mermaidGraph += `    UI_Graph["🗺️ CodebaseGraphViewer.jsx<br/><i>(AST & Cartography)</i>"]:::ui\n`;
+  mermaidGraph += `    UI_Skills["✨ SkillsHub.jsx<br/><i>(GitHub Inspector & Skills)</i>"]:::ui\n`;
+  mermaidGraph += `    UI_Auth["🔐 LoginPage.jsx<br/><i>(CLI Auth Gate)</i>"]:::ui\n`;
+  mermaidGraph += `    UI_WS["⚡ websocket.js & api.js<br/><i>(RPC & Realtime Client)</i>"]:::service\n`;
+  mermaidGraph += `  end\n\n`;
 
-  mermaidGraph += `  end\n`;
+  // 2. Backend Gateway Subgraph
+  mermaidGraph += `  subgraph Backend["⚡ Backend Gateway (Node.js + Express)"]\n`;
+  mermaidGraph += `    SRV_Main["🌐 server/src/index.js<br/><i>(HTTP & WS Server :3001)</i>"]:::server\n`;
+  mermaidGraph += `    SRV_WS["🔌 ws.js<br/><i>(WebSocket Dispatcher)</i>"]:::server\n`;
+  mermaidGraph += `    SRV_Agent["🧠 agentEngine.js<br/><i>(Process Stream Runner)</i>"]:::server\n`;
+  mermaidGraph += `    SRV_Graph["🗺️ graphEngine.js<br/><i>(AST Cartographer)</i>"]:::server\n`;
+  mermaidGraph += `    SRV_Routes["🛣️ routes/<br/><i>(workspace, skills, system, sessions)</i>"]:::server\n`;
+  mermaidGraph += `  end\n\n`;
 
-  // Add dependency arrows
-  dependencies.slice(0, 12).forEach((dep, idx) => {
-    const srcName = path.basename(dep.file);
-    const srcId = `f_${idx}`;
-    dep.imports.slice(0, 2).forEach((imp, impIdx) => {
-      const targetName = path.basename(imp);
-      const targetId = `t_${idx}_${impIdx}`;
-      mermaidGraph += `  ${srcId}["📄 ${srcName}"] --> ${targetId}["📄 ${targetName}"]\n`;
-    });
-  });
+  // 3. Engine & Environment Subgraph
+  mermaidGraph += `  subgraph Engine["🤖 Antigravity 2.0 CLI & Storage"]\n`;
+  mermaidGraph += `    CLI_Bin["⚙️ agy.exe<br/><i>(stream-json Agent Runtime)</i>"]:::cli\n`;
+  mermaidGraph += `    CLI_Skills["📦 .gemini/skills/<br/><i>(Cartographer, Token Saver, Patcher)</i>"]:::cli\n`;
+  mermaidGraph += `    CLI_Brain["🧠 brain/<conversation-id>/<br/><i>(JSONL Trajectory Logs & Artifacts)</i>"]:::cli\n`;
+  mermaidGraph += `  end\n\n`;
+
+  // 4. Connect Cross-Layer Pipelines
+  mermaidGraph += `  UI_App --> UI_Canvas\n`;
+  mermaidGraph += `  UI_App --> UI_Editor\n`;
+  mermaidGraph += `  UI_App --> UI_Graph\n`;
+  mermaidGraph += `  UI_App --> UI_Skills\n`;
+  mermaidGraph += `  UI_App --> UI_Auth\n`;
+  mermaidGraph += `  UI_Canvas --> UI_WS\n`;
+  mermaidGraph += `  UI_Graph --> UI_WS\n`;
+  mermaidGraph += `  UI_Skills --> UI_WS\n\n`;
+
+  mermaidGraph += `  UI_WS <== "WebSocket Stream (/ws)" ==> SRV_WS\n`;
+  mermaidGraph += `  UI_WS <== "REST API (/api/*)" ==> SRV_Routes\n`;
+  mermaidGraph += `  SRV_WS --> SRV_Agent\n`;
+  mermaidGraph += `  SRV_Routes --> SRV_Graph\n`;
+  mermaidGraph += `  SRV_Agent --> SRV_Graph\n\n`;
+
+  mermaidGraph += `  SRV_Agent <== "spawn(agy, -p ...)" ==> CLI_Bin\n`;
+  mermaidGraph += `  CLI_Bin --> CLI_Skills\n`;
+  mermaidGraph += `  CLI_Bin --> CLI_Brain\n\n`;
+
+  // 5. Stylings
+  mermaidGraph += `  classDef ui fill:#1e1b4b,stroke:#6366f1,stroke-width:2px,color:#e0e7ff,rx:8,ry:8;\n`;
+  mermaidGraph += `  classDef server fill:#064e3b,stroke:#10b981,stroke-width:2px,color:#d1fae5,rx:8,ry:8;\n`;
+  mermaidGraph += `  classDef cli fill:#451a03,stroke:#f59e0b,stroke-width:2px,color:#fef3c7,rx:8,ry:8;\n`;
+  mermaidGraph += `  classDef service fill:#164e63,stroke:#06b6d4,stroke-width:2px,color:#cffafe,rx:8,ry:8;\n`;
 
   // Calculate token efficiency estimate
   const estimatedRawSearchTokens = allFiles.length * 80 + 3000; // ~10,000+ tokens
