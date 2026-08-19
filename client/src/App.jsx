@@ -19,17 +19,28 @@ import {
 } from './services/api';
 import { HarnessWebSocket } from './services/websocket';
 
+// Helper to normalize Windows/POSIX paths for comparison
+function normalizePath(p) {
+  if (!p) return '';
+  return p.replace(/\\/g, '/').toLowerCase();
+}
+
+function isPathUnderProject(filePath, projPath) {
+  if (!filePath || !projPath) return false;
+  return normalizePath(filePath).startsWith(normalizePath(projPath));
+}
+
 // Helper to create an initial default tab for a project
 function createInitialTabForProject(projectPath, projectName, tabIndex = 0) {
   const isMain = tabIndex === 0;
   return {
     id: `agent-${Date.now()}-${tabIndex}`,
     projectPath: projectPath || 'D:\\AntiG',
-    title: isMain ? `${projectName || 'AntiG'} Agent` : `Subagent #${tabIndex}`,
+    title: isMain ? `${projectName || 'Project'} Agent` : `Subagent #${tabIndex}`,
     messages: [
       {
         role: 'assistant',
-        content: `👋 Connected to **${projectName || 'AntiG'}** (\`${projectPath || 'D:\\AntiG'}\`)\n\n- **Project-Isolated Chat**: This conversation is uniquely bound to this project.\n- **Real-Time Thinking**: The AI's live reasoning and planning steps are displayed as it generates.\n- **Direct Commands**: Type commands like \`dir\`, \`git status\`, or \`npm run build\` to execute right inside this directory.`,
+        content: `👋 Connected to **${projectName || 'Project'}** (\`${projectPath}\`)\n\n- **Project-Isolated Chat**: This conversation is uniquely bound to this project.\n- **Real-Time Thinking**: The AI's live reasoning and planning steps are displayed as it generates.\n- **Direct Commands**: Type commands like \`dir\`, \`git status\`, or \`npm run build\` to execute right inside this directory.`,
       }
     ],
     isStreaming: false,
@@ -46,6 +57,7 @@ export default function App() {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [systemHealth, setSystemHealth] = useState(null);
   const [workspace, setWorkspace] = useState(null);
+  const [activeProjectPath, setActiveProjectPath] = useState('D:\\AntiG');
   const [usageData, setUsageData] = useState(null);
 
   // Projects & Nested folder tree state
@@ -86,13 +98,15 @@ export default function App() {
 
   const wsClientRef = useRef(null);
   const containerRef = useRef(null);
+  const activeProjectRef = useRef(activeProjectPath);
 
-  // Determine current active project path
-  const currentProjectPath = workspace?.workspacePath || 'D:\\AntiG';
+  useEffect(() => {
+    activeProjectRef.current = activeProjectPath;
+  }, [activeProjectPath]);
 
-  // Get active tabs array for current project
-  const currentProjectTabs = projectChatTabsMap[currentProjectPath] || [
-    createInitialTabForProject(currentProjectPath, workspace?.name || 'Project', 0)
+  // Get active tabs array for current active project
+  const currentProjectTabs = projectChatTabsMap[activeProjectPath] || [
+    createInitialTabForProject(activeProjectPath, workspace?.name || 'Project', 0)
   ];
 
   // Active chat tab
@@ -105,18 +119,18 @@ export default function App() {
         setActiveTabId(currentProjectTabs[0].id);
       }
     }
-  }, [currentProjectPath, currentProjectTabs, activeTabId]);
+  }, [activeProjectPath, currentProjectTabs, activeTabId]);
 
   const handleAddChatTab = () => {
     const newId = `agent-${Date.now()}`;
     const newTab = {
       id: newId,
-      projectPath: currentProjectPath,
+      projectPath: activeProjectPath,
       title: `Subagent #${currentProjectTabs.length}`,
       messages: [
         {
           role: 'assistant',
-          content: `Subagent #${currentProjectTabs.length} is deployed in \`${currentProjectPath}\`. You can run independent tasks or shell commands here while other agents work concurrently!`,
+          content: `Subagent #${currentProjectTabs.length} is deployed in \`${activeProjectPath}\`. You can run independent tasks or shell commands here while other agents work concurrently!`,
         }
       ],
       isStreaming: false,
@@ -130,7 +144,7 @@ export default function App() {
 
     setProjectChatTabsMap((prev) => ({
       ...prev,
-      [currentProjectPath]: [...(prev[currentProjectPath] || []), newTab]
+      [activeProjectPath]: [...(prev[activeProjectPath] || []), newTab]
     }));
     setActiveTabId(newId);
   };
@@ -140,7 +154,7 @@ export default function App() {
     const filtered = currentProjectTabs.filter((t) => t.id !== tabId);
     setProjectChatTabsMap((prev) => ({
       ...prev,
-      [currentProjectPath]: filtered,
+      [activeProjectPath]: filtered,
     }));
     if (activeTabId === tabId) {
       setActiveTabId(filtered[filtered.length - 1].id);
@@ -185,13 +199,12 @@ export default function App() {
     }));
   };
 
-  // Initialize data loading
+  // Initialize data loading (without resetting selected project)
   const loadData = async () => {
     try {
-      const [health, projsData, wsInfo, sessData, usage] = await Promise.all([
+      const [health, projsData, sessData, usage] = await Promise.all([
         getSystemHealth().catch(() => null),
         getProjects().catch(() => ({ projects: [] })),
-        getWorkspaceInfo().catch(() => null),
         getSessions().catch(() => ({ sessions: [], currentConversationId: null })),
         getUsage().catch(() => null),
       ]);
@@ -199,19 +212,25 @@ export default function App() {
       if (health) setSystemHealth(health);
       if (usage) setUsageData(usage);
 
-      if (projsData?.projects) {
+      if (projsData?.projects && projsData.projects.length > 0) {
         setProjects(projsData.projects);
+        
         for (const p of projsData.projects) {
           loadProjectFiles(p.path);
         }
-      }
 
-      if (wsInfo) {
-        setWorkspace(wsInfo);
-        const pkg = wsInfo.items?.find((i) => i.name === 'package.json');
-        if (pkg && openFiles.length === 0) {
-          handleOpenFile(pkg);
-        }
+        // Set initial workspace if not yet set
+        setWorkspace((prev) => {
+          if (!prev) {
+            const initialProj = projsData.projects[0];
+            setActiveProjectPath(initialProj.path);
+            return {
+              name: initialProj.name,
+              workspacePath: initialProj.path,
+            };
+          }
+          return prev;
+        });
       }
       
       if (sessData?.sessions && sessData.sessions.length > 0) {
@@ -233,7 +252,7 @@ export default function App() {
     const res = await addProject(folderPath);
     if (res.project) {
       setProjects((prev) => {
-        if (!prev.some((p) => p.path === res.project.path)) {
+        if (!prev.some((p) => normalizePath(p.path) === normalizePath(res.project.path))) {
           return [...prev, res.project];
         }
         return prev;
@@ -241,22 +260,22 @@ export default function App() {
       setExpandedProjects((prev) => ({ ...prev, [res.project.path]: true }));
       await loadProjectFiles(res.project.path);
 
-      // Initialize tabs for the new project if not exists
-      setProjectChatTabsMap((prev) => {
-        if (!prev[res.project.path]) {
-          return {
-            ...prev,
-            [res.project.path]: [createInitialTabForProject(res.project.path, res.project.name, 0)]
-          };
-        }
-        return prev;
-      });
+      // Select newly added project
+      handleSelectProject(res.project);
     }
   };
 
   const handleRemoveProject = async (folderPath) => {
     await removeProject(folderPath);
-    setProjects((prev) => prev.filter((p) => p.path !== folderPath));
+    setProjects((prev) => prev.filter((p) => normalizePath(p.path) !== normalizePath(folderPath)));
+    
+    // If the removed project was active, switch to first remaining project
+    if (normalizePath(activeProjectPath) === normalizePath(folderPath)) {
+      const remaining = projects.filter((p) => normalizePath(p.path) !== normalizePath(folderPath));
+      if (remaining.length > 0) {
+        handleSelectProject(remaining[0]);
+      }
+    }
   };
 
   const handleToggleProjectExpand = (projPath) => {
@@ -266,11 +285,13 @@ export default function App() {
     }));
   };
 
+  // Explicitly switch active project
   const handleSelectProject = async (proj) => {
-    const info = await loadProjectFiles(proj.path);
-    if (info) {
-      setWorkspace(info);
-    }
+    setActiveProjectPath(proj.path);
+    setWorkspace({
+      name: proj.name,
+      workspacePath: proj.path,
+    });
 
     // Ensure tabs exist for selected project
     setProjectChatTabsMap((prev) => {
@@ -286,6 +307,8 @@ export default function App() {
         return prev;
       }
     });
+
+    await loadProjectFiles(proj.path);
   };
 
   // Resizing logic
@@ -385,7 +408,7 @@ export default function App() {
               ...tab,
               isStreaming: true,
               currentStream: { 
-                thoughts: `> Analyzing request for: \`${data.payload?.workspacePath || currentProjectPath}\`...\n`, 
+                thoughts: `> Analyzing request for: \`${data.payload?.workspacePath || activeProjectRef.current}\`...\n`, 
                 isThinking: true, 
                 tools: [], 
                 content: '' 
@@ -454,7 +477,7 @@ export default function App() {
             setShowFilePane(true);
             const targetFileObj = { path: filePath, name: fileName };
             setOpenFiles((prev) => {
-              if (!prev.some((f) => f.path === filePath)) {
+              if (!prev.some((f) => normalizePath(f.path) === normalizePath(filePath))) {
                 return [...prev, targetFileObj];
               }
               return prev;
@@ -463,7 +486,7 @@ export default function App() {
             setFileContents((prev) => ({ ...prev, [filePath]: content }));
             setOriginalContents((prev) => ({ ...prev, [filePath]: previousContent || prev[filePath] || '' }));
             setLiveAiModifiedFile(filePath);
-            loadData();
+            loadProjectFiles(activeProjectRef.current);
             break;
           }
 
@@ -493,7 +516,7 @@ export default function App() {
                 currentStream: { thoughts: '', isThinking: false, tools: [], content: '' },
               };
             });
-            loadData();
+            loadProjectFiles(activeProjectRef.current);
             break;
           }
 
@@ -563,6 +586,7 @@ export default function App() {
                   : m
               ),
             }));
+            loadProjectFiles(activeProjectRef.current);
             break;
           }
 
@@ -581,20 +605,20 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       ws.disconnect();
     };
-  }, [activeTabId, currentProjectPath]);
+  }, [activeTabId]);
 
   const handleOpenFile = async (file) => {
     if (file.isDirectory) return;
     
     setShowFilePane(true);
     
-    // Auto-switch active project context if this file belongs to a specific project
-    const owningProj = projects.find((p) => file.path.startsWith(p.path));
-    if (owningProj && workspace?.workspacePath !== owningProj.path) {
+    // Auto-switch active project context if this file belongs to another project
+    const owningProj = projects.find((p) => isPathUnderProject(file.path, p.path));
+    if (owningProj && normalizePath(activeProjectPath) !== normalizePath(owningProj.path)) {
       handleSelectProject(owningProj);
     }
 
-    if (!openFiles.some((f) => f.path === file.path)) {
+    if (!openFiles.some((f) => normalizePath(f.path) === normalizePath(file.path))) {
       setOpenFiles((prev) => [...prev, file]);
     }
     setActiveFile(file);
@@ -632,9 +656,9 @@ export default function App() {
   };
 
   const handleCloseFileTab = (fileToClose) => {
-    const updated = openFiles.filter((f) => f.path !== fileToClose.path);
+    const updated = openFiles.filter((f) => normalizePath(f.path) !== normalizePath(fileToClose.path));
     setOpenFiles(updated);
-    if (activeFile?.path === fileToClose.path) {
+    if (activeFile && normalizePath(activeFile.path) === normalizePath(fileToClose.path)) {
       setActiveFile(updated.length > 0 ? updated[updated.length - 1] : null);
     }
   };
@@ -646,7 +670,7 @@ export default function App() {
     if (text.startsWith('/clear')) {
       setProjectChatTabsMap((prev) => ({
         ...prev,
-        [currentProjectPath]: (prev[currentProjectPath] || []).map((t) =>
+        [activeProjectPath]: (prev[activeProjectPath] || []).map((t) =>
           t.id === activeTabId ? { ...t, messages: [] } : t
         ),
       }));
@@ -666,7 +690,7 @@ export default function App() {
       };
       setProjectChatTabsMap((prev) => ({
         ...prev,
-        [currentProjectPath]: (prev[currentProjectPath] || []).map((t) =>
+        [activeProjectPath]: (prev[activeProjectPath] || []).map((t) =>
           t.id === activeTabId ? { ...t, messages: [...t.messages, usageMsg] } : t
         ),
       }));
@@ -676,11 +700,11 @@ export default function App() {
     if (text.startsWith('/help')) {
       const helpMsg = {
         role: 'assistant',
-        content: `### 💡 Antigravity Unified Harness Help\n\n- **Project Scope**: Currently in \`${currentProjectPath}\`.\n- **AI Agent Chat**: Type any question, code request, or refactoring prompt.\n- **Direct Shell Commands**: Type \`$ git status\`, \`$ npm run build\`, \`dir\`, \`ls\`, or switch to **Shell** mode to run commands directly.\n- **Slash Commands**:\n  - \`/usage\`: Check live 5-hour and weekly quota rate limits.\n  - \`/clear\`: Clear the active conversation stream.\n  - \`/help\`: View this help message.\n- **Chat Tabs**: Click \`+\` in the top bar to run multiple concurrent subagents.\n- **Shortcuts**:\n  - \`Ctrl+B\`: Toggle Sidebar\n  - \`Ctrl+F\`: Search conversation`,
+        content: `### 💡 Antigravity Unified Harness Help\n\n- **Project Scope**: Currently in \`${activeProjectPath}\`.\n- **AI Agent Chat**: Type any question, code request, or refactoring prompt.\n- **Direct Shell Commands**: Type \`$ git status\`, \`$ npm run build\`, \`dir\`, \`ls\`, or switch to **Shell** mode to run commands directly.\n- **Slash Commands**:\n  - \`/usage\`: Check live 5-hour and weekly quota rate limits.\n  - \`/clear\`: Clear the active conversation stream.\n  - \`/help\`: View this help message.\n- **Chat Tabs**: Click \`+\` in the top bar to run multiple concurrent subagents.\n- **Shortcuts**:\n  - \`Ctrl+B\`: Toggle Sidebar\n  - \`Ctrl+F\`: Search conversation`,
       };
       setProjectChatTabsMap((prev) => ({
         ...prev,
-        [currentProjectPath]: (prev[currentProjectPath] || []).map((t) =>
+        [activeProjectPath]: (prev[activeProjectPath] || []).map((t) =>
           t.id === activeTabId ? { ...t, messages: [...t.messages, helpMsg] } : t
         ),
       }));
@@ -690,14 +714,14 @@ export default function App() {
     const userMsg = { role: 'user', content: text };
     setProjectChatTabsMap((prev) => ({
       ...prev,
-      [currentProjectPath]: (prev[currentProjectPath] || []).map((t) =>
+      [activeProjectPath]: (prev[activeProjectPath] || []).map((t) =>
         t.id === activeTabId
           ? { 
               ...t, 
               messages: [...t.messages, userMsg], 
               isStreaming: true,
               currentStream: {
-                thoughts: `> Analyzing request for: \`${currentProjectPath}\`...\n`,
+                thoughts: `> Analyzing request for: \`${activeProjectPath}\`...\n`,
                 isThinking: true,
                 tools: [],
                 content: '',
@@ -709,7 +733,7 @@ export default function App() {
 
     wsClientRef.current?.send('RUN_AGENT_PROMPT', {
       prompt: text,
-      workspacePath: currentProjectPath,
+      workspacePath: activeProjectPath,
       sessionId: activeTabId,
       model: options.model || 'Gemini 3.7 Flash',
       thinkingEffort: options.thinkingEffort || 'medium',
@@ -730,7 +754,7 @@ export default function App() {
 
     setProjectChatTabsMap((prev) => ({
       ...prev,
-      [currentProjectPath]: (prev[currentProjectPath] || []).map((t) =>
+      [activeProjectPath]: (prev[activeProjectPath] || []).map((t) =>
         t.id === activeTabId
           ? { ...t, messages: [...t.messages, termMsg] }
           : t
@@ -740,7 +764,7 @@ export default function App() {
     wsClientRef.current?.send('EXEC_SHELL_COMMAND', {
       commandId,
       command: cmd,
-      workspacePath: currentProjectPath,
+      workspacePath: activeProjectPath,
       sessionId: activeTabId,
     });
   };
@@ -753,7 +777,7 @@ export default function App() {
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-slate-100 font-sans">
       {/* Top Header */}
       <Header
-        workspace={workspace}
+        workspace={workspace || { name: 'AntiG', workspacePath: activeProjectPath }}
         onRefresh={loadData}
         showFilePane={showFilePane}
         onToggleFilePane={() => setShowFilePane(!showFilePane)}
@@ -769,7 +793,7 @@ export default function App() {
             <Sidebar
               width={sidebarWidth}
               projects={projects}
-              activeProject={workspace}
+              activeProject={{ name: workspace?.name, workspacePath: activeProjectPath }}
               projectFilesMap={projectFilesMap}
               expandedProjects={expandedProjects}
               expandedFolders={expandedFolders}
@@ -817,7 +841,7 @@ export default function App() {
             onRunShellCommand={handleRunShellCommand}
             onStopStream={handleStopStream}
             isStreaming={activeTab.isStreaming}
-            workspace={workspace}
+            workspace={{ name: workspace?.name, workspacePath: activeProjectPath }}
           />
         </div>
 
@@ -859,7 +883,7 @@ export default function App() {
       {/* Bottom Status Bar */}
       <StatusBar
         connectionStatus={connectionStatus}
-        workspace={workspace}
+        workspace={{ name: workspace?.name, workspacePath: activeProjectPath }}
         usageData={usageData}
       />
     </div>
