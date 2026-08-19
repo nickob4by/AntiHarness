@@ -21,7 +21,8 @@ import {
   Zap,
   Code2,
   HelpCircle,
-  Folder
+  Folder,
+  Check
 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ThinkingBox from './ThinkingBox';
@@ -78,6 +79,8 @@ export default function MainCanvas({
   const chatBottomRef = useRef(null);
   const textareaRef = useRef(null);
   const messageRefs = useRef([]);
+  const modelDropdownRef = useRef(null);
+  const thinkingDropdownRef = useRef(null);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -90,6 +93,20 @@ export default function MainCanvas({
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
   }, [inputPrompt]);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target)) {
+        setIsModelDropdownOpen(false);
+      }
+      if (thinkingDropdownRef.current && !thinkingDropdownRef.current.contains(event.target)) {
+        setIsThinkingDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Handle Ctrl+F for quick chat search
   useEffect(() => {
@@ -545,7 +562,7 @@ export default function MainCanvas({
 
                   <div className="p-3.5 rounded-xl text-xs leading-relaxed bg-surface/90 border border-indigo-500/30 text-slate-200 rounded-bl-none shadow-md flex-1 max-w-[85%]">
                     {/* Live Thinking */}
-                    {currentStream.thoughts && (
+                    {(currentStream.thoughts || currentStream.isThinking) && (
                       <ThinkingBox thoughts={currentStream.thoughts} isThinking={currentStream.isThinking} />
                     )}
 
@@ -579,8 +596,8 @@ export default function MainCanvas({
       </div>
 
       {/* 5. UNIFIED PROMPT & TERMINAL INPUT BAR */}
-      <div className="p-4 border-t border-border bg-surface/40 backdrop-blur select-none">
-        <form onSubmit={handleSend} className="max-w-3xl mx-auto w-full bg-surface/90 border border-border rounded-xl p-2.5 space-y-2 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/40 transition-all shadow-sm">
+      <div className="p-4 border-t border-border bg-surface/40 backdrop-blur select-none relative z-30">
+        <form onSubmit={handleSend} className="max-w-3xl mx-auto w-full bg-surface/95 border border-border rounded-xl p-2.5 space-y-2 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/40 transition-all shadow-sm relative">
           {/* Expanding Monospace Input */}
           <textarea
             ref={textareaRef}
@@ -599,7 +616,7 @@ export default function MainCanvas({
           {/* Bottom Toolbar: Mode Toggle, Model Selector, Thinking & Execute */}
           <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[11px]">
             {/* Left Controls: Mode + Model + Thinking */}
-            <div className="flex items-center gap-1.5 overflow-x-auto">
+            <div className="flex items-center gap-1.5">
               {/* Input Mode Toggle: Auto / Agent / Shell */}
               <div className="flex items-center bg-surface border border-border/70 rounded p-0.5 text-[10px]">
                 <button
@@ -638,45 +655,54 @@ export default function MainCanvas({
 
               {/* Model Dropdown (when not in pure shell mode) */}
               {inputMode !== 'shell' && (
-                <div className="relative">
+                <div className="relative" ref={modelDropdownRef}>
                   <button
                     type="button"
                     onClick={() => {
                       setIsModelDropdownOpen(!isModelDropdownOpen);
                       setIsThinkingDropdownOpen(false);
                     }}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface border border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40 transition-all text-[10px]"
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded border transition-all text-[10px] ${
+                      isModelDropdownOpen 
+                        ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-200' 
+                        : 'bg-surface border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40'
+                    }`}
                   >
                     <Cpu className="w-3 h-3 text-indigo-400" />
                     <span className="font-medium text-slate-200">{currentModelName}</span>
-                    <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                    <ChevronDown className={`w-2.5 h-2.5 text-slate-400 transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
 
                   {isModelDropdownOpen && (
-                    <div 
-                      className="absolute left-0 bottom-full mb-1.5 w-64 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
-                      onMouseLeave={() => setIsModelDropdownOpen(false)}
-                    >
-                      <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                        Select Model
+                    <div className="absolute left-0 bottom-full mb-2 w-64 bg-[#0a0e17] border border-border/90 rounded-xl shadow-2xl p-1.5 z-50 space-y-0.5 animate-fadeIn">
+                      <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center justify-between">
+                        <span>Select Model</span>
+                        <Cpu className="w-3 h-3 text-indigo-400" />
                       </div>
-                      {AVAILABLE_MODELS.map((model) => (
-                        <button
-                          key={model.id}
-                          onClick={() => {
-                            setSelectedModel(model.id);
-                            setIsModelDropdownOpen(false);
-                          }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors text-[11px] ${
-                            selectedModel === model.id
-                              ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                              : 'text-slate-300 hover:bg-surface-hover hover:text-white'
-                          }`}
-                        >
-                          <div className="font-medium">{model.name}</div>
-                          <div className="text-[9px] opacity-75 font-sans truncate">{model.desc}</div>
-                        </button>
-                      ))}
+                      {AVAILABLE_MODELS.map((model) => {
+                        const isSelected = selectedModel === model.id;
+                        return (
+                          <button
+                            key={model.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedModel(model.id);
+                              setIsModelDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors text-[11px] flex items-center justify-between ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                                : 'text-slate-300 hover:bg-surface-hover hover:text-white'
+                            }`}
+                          >
+                            <div className="truncate mr-1">
+                              <div className="font-medium">{model.name}</div>
+                              <div className="text-[9px] opacity-75 font-sans truncate">{model.desc}</div>
+                            </div>
+                            {isSelected && <Check className="w-3 h-3 text-white shrink-0" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -684,45 +710,54 @@ export default function MainCanvas({
 
               {/* Thinking Effort Dropdown */}
               {inputMode !== 'shell' && (
-                <div className="relative">
+                <div className="relative" ref={thinkingDropdownRef}>
                   <button
                     type="button"
                     onClick={() => {
                       setIsThinkingDropdownOpen(!isThinkingDropdownOpen);
                       setIsModelDropdownOpen(false);
                     }}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface border border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40 transition-all text-[10px]"
+                    className={`flex items-center gap-1 px-2 py-0.5 rounded border transition-all text-[10px] ${
+                      isThinkingDropdownOpen
+                        ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-200'
+                        : 'bg-surface border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40'
+                    }`}
                   >
                     <Brain className="w-3 h-3 text-indigo-400" />
                     <span>{currentThinkingLabel}</span>
-                    <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                    <ChevronDown className={`w-2.5 h-2.5 text-slate-400 transition-transform ${isThinkingDropdownOpen ? 'rotate-180' : ''}`} />
                   </button>
 
                   {isThinkingDropdownOpen && (
-                    <div 
-                      className="absolute left-0 bottom-full mb-1.5 w-56 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
-                      onMouseLeave={() => setIsThinkingDropdownOpen(false)}
-                    >
-                      <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                        Thinking Effort
+                    <div className="absolute left-0 bottom-full mb-2 w-56 bg-[#0a0e17] border border-border/90 rounded-xl shadow-2xl p-1.5 z-50 space-y-0.5 animate-fadeIn">
+                      <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center justify-between">
+                        <span>Thinking Effort</span>
+                        <Brain className="w-3 h-3 text-indigo-400" />
                       </div>
-                      {THINKING_EFFORTS.map((effort) => (
-                        <button
-                          key={effort.id}
-                          onClick={() => {
-                            setThinkingEffort(effort.id);
-                            setIsThinkingDropdownOpen(false);
-                          }}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors text-[11px] ${
-                            thinkingEffort === effort.id
-                              ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                              : 'text-slate-300 hover:bg-surface-hover hover:text-white'
-                          }`}
-                        >
-                          <div className="font-medium">{effort.label}</div>
-                          <div className="text-[9px] opacity-75 font-sans truncate">{effort.desc}</div>
-                        </button>
-                      ))}
+                      {THINKING_EFFORTS.map((effort) => {
+                        const isSelected = thinkingEffort === effort.id;
+                        return (
+                          <button
+                            key={effort.id}
+                            type="button"
+                            onClick={() => {
+                              setThinkingEffort(effort.id);
+                              setIsThinkingDropdownOpen(false);
+                            }}
+                            className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors text-[11px] flex items-center justify-between ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                                : 'text-slate-300 hover:bg-surface-hover hover:text-white'
+                            }`}
+                          >
+                            <div className="truncate mr-1">
+                              <div className="font-medium">{effort.label}</div>
+                              <div className="text-[9px] opacity-75 font-sans truncate">{effort.desc}</div>
+                            </div>
+                            {isSelected && <Check className="w-3 h-3 text-white shrink-0" />}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
