@@ -29,9 +29,9 @@
 
 ---
 
-## ⚡ Quick Start
+## ⚡ Quick Start & 1-Click Update
 
-### 1. Install Dependencies
+### 1. Initial Setup
 ```bash
 npm run install:all
 ```
@@ -41,8 +41,41 @@ npm run install:all
 npm run dev
 ```
 
-- **Web GUI**: `http://localhost:5173`
+- **Web GUI**: `http://localhost:5180`
 - **Backend Gateway**: `http://localhost:3001`
+
+---
+
+### 🔄 1-Click Update (Sync Latest Version Across Computers)
+If you already have AntiHarness cloned on another computer, you can update everything with a single command:
+
+#### Via Terminal:
+```bash
+npm run update
+```
+
+#### Via Windows Batch / PowerShell:
+```cmd
+.\update.bat
+# or
+.\update.ps1
+```
+
+#### Via Linux / macOS:
+```bash
+./update.sh
+```
+
+---
+
+## 🌟 Key Features
+
+- **🗺️ Codebase Cartographer (Graphify Engine)**: Pre-computes dense AST cartography maps and multi-tier Mermaid architecture diagrams, saving up to **95% of discovery tokens** on session start.
+- **✨ Skills Hub & GitHub Installer**: Browse, manage, and inspect skills (`.gemini/skills/*`, global, builtin) and install skills directly from GitHub URLs with automated AI synopsis previews.
+- **📱 Adaptive Half-Screen Layout**: Automatically adapts to narrow viewports / split screen with single-pane switching (`[💬 Chat] / [💻 Code]`) and an overlay sidebar drawer.
+- **📝 Monaco Code & Diff Editor**: Real-time side-by-side & inline diffs with 1-click "Accept Changes" and syntax-highlighted editor.
+- **⚡ Dual-Stream Agent Streaming**: Real-time chain-of-thought collapsible drawers, structured tool execution cards, and live markdown formatting.
+- **🔐 Antigravity Auth & Quota Gates**: Real-time 5-hour quota and weekly rate limit monitoring with direct AGY CLI OAuth verification.
 
 ---
 
@@ -50,18 +83,20 @@ npm run dev
 
 ```
 AntiHarness/
-├── client/                 # React + Vite frontend application
+├── .gemini/skills/         # Built-in skills (codebase-cartographer, token-saver, surgical-patcher)
+├── client/                 # React + Vite frontend application (Port 5180)
 │   ├── src/
-│   │   ├── components/     # UI components (Header, Sidebar, MainCanvas, FileViewer, etc.)
+│   │   ├── components/     # UI (Header, Sidebar, MainCanvas, FileViewer, CodebaseGraph, SkillsHub)
 │   │   ├── services/       # REST and WebSocket API client
 │   │   └── App.jsx
 │   └── vite.config.js
-├── server/                 # Express + WebSocket backend server
+├── server/                 # Express + WebSocket backend server (Port 3001)
 │   ├── src/
-│   │   ├── routes/         # Workspace, System, and Sessions API routes
-│   │   ├── agentEngine.js  # Agent stream orchestration engine
-│   │   ├── ws.js           # WebSocket gateway handler
-│   │   └── index.js        # Server entry point
+│   │   ├── routes/         # Workspace, Skills, System, Sessions API routes
+│   │   ├── services/       # Graph & AST cartography engine
+│   │   ├── agentEngine.js  # Agent stream orchestration & token context injector
+│   │   └── ws.js           # WebSocket gateway handler
+├── update.bat / ps1 / sh   # 1-Click Auto-Update scripts
 ├── package.json            # Root monorepo scripts
 └── README.md
 ```
