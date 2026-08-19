@@ -1,4 +1,3 @@
-@import '@xterm/xterm/css/xterm.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -39,9 +38,4 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #3b475e;
-}
-
-/* xterm container overrides */
-.xterm .xterm-viewport {
-  background-color: #080b11 !important;
 }

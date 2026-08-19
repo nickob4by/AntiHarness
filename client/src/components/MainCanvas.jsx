@@ -20,7 +20,8 @@ import {
   Plus,
   Zap,
   Code2,
-  HelpCircle
+  HelpCircle,
+  Folder
 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ThinkingBox from './ThinkingBox';
