@@ -62,6 +62,45 @@ export async function getFileContent(filePath) {
   return res.json();
 }
 
+export async function saveFileContent(filePath, content) {
+  const res = await fetch('/api/workspace/file', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filePath, content }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to save file');
+  }
+  return res.json();
+}
+
+export async function createWorkspaceItem(targetPath, name, isDirectory = false) {
+  const res = await fetch('/api/workspace/file', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetPath, name, isDirectory }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to create item');
+  }
+  return res.json();
+}
+
+export async function deleteWorkspaceItem(targetPath) {
+  const res = await fetch('/api/workspace/file', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targetPath }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Failed to delete item');
+  }
+  return res.json();
+}
+
 export async function getSessions() {
   const res = await fetch('/api/sessions');
   if (!res.ok) throw new Error('Failed to fetch sessions');

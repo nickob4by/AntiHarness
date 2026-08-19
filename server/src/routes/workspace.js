@@ -29,7 +29,6 @@ function getAvailableDrives() {
     drives.push({ name: '/', path: '/' });
   }
 
-  // Also include Home directory
   drives.push({ name: 'Home', path: os.homedir() });
   return drives;
 }
@@ -55,7 +54,6 @@ router.get('/browse', (req, res) => {
     const directories = [];
 
     for (const item of items) {
-      // Ignore system protected / hidden system directories
       if (item.name.startsWith('$') || item.name === 'System Volume Information') {
         continue;
       }
@@ -225,6 +223,96 @@ router.get('/file', (req, res) => {
       name: path.basename(resolved),
       content,
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Save / Update file content
+router.put('/file', (req, res) => {
+  const { filePath, content } = req.body;
+  if (!filePath) {
+    return res.status(400).json({ error: 'File path is required' });
+  }
+
+  try {
+    const resolved = path.resolve(filePath);
+    // Ensure parent dir exists
+    const dir = path.dirname(resolved);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(resolved, content || '', 'utf-8');
+    const stats = fs.statSync(resolved);
+
+    res.json({
+      success: true,
+      path: resolved,
+      name: path.basename(resolved),
+      size: stats.size,
+      savedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create new file or folder
+router.post('/file', (req, res) => {
+  const { targetPath, isDirectory, name } = req.body;
+  if (!targetPath || !name) {
+    return res.status(400).json({ error: 'Target path and name are required' });
+  }
+
+  try {
+    const itemPath = path.join(path.resolve(targetPath), name);
+    if (fs.existsSync(itemPath)) {
+      return res.status(400).json({ error: 'Item already exists' });
+    }
+
+    if (isDirectory) {
+      fs.mkdirSync(itemPath, { recursive: true });
+    } else {
+      const parent = path.dirname(itemPath);
+      if (!fs.existsSync(parent)) {
+        fs.mkdirSync(parent, { recursive: true });
+      }
+      fs.writeFileSync(itemPath, '', 'utf-8');
+    }
+
+    res.json({
+      success: true,
+      path: itemPath,
+      name,
+      isDirectory: !!isDirectory,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete file or folder
+router.delete('/file', (req, res) => {
+  const { targetPath } = req.body;
+  if (!targetPath) {
+    return res.status(400).json({ error: 'Target path is required' });
+  }
+
+  try {
+    const resolved = path.resolve(targetPath);
+    if (!fs.existsSync(resolved)) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const stats = fs.statSync(resolved);
+    if (stats.isDirectory()) {
+      fs.rmSync(resolved, { recursive: true, force: true });
+    } else {
+      fs.unlinkSync(resolved);
+    }
+
+    res.json({ success: true, path: resolved });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

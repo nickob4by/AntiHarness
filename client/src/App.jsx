@@ -372,6 +372,8 @@ export default function App() {
     };
   }, []);
 
+  const [originalContents, setOriginalContents] = useState({});
+
   const handleOpenFile = async (file) => {
     if (file.isDirectory) return;
     
@@ -386,6 +388,7 @@ export default function App() {
       try {
         const res = await getFileContent(file.path);
         setFileContents((prev) => ({ ...prev, [file.path]: res.content }));
+        setOriginalContents((prev) => ({ ...prev, [file.path]: res.content }));
       } catch (err) {
         setFileContents((prev) => ({ ...prev, [file.path]: `Error loading file: ${err.message}` }));
       }
@@ -396,8 +399,20 @@ export default function App() {
     try {
       const res = await getFileContent(file.path);
       setFileContents((prev) => ({ ...prev, [file.path]: res.content }));
+      setOriginalContents((prev) => ({ ...prev, [file.path]: res.content }));
     } catch (err) {
       setFileContents((prev) => ({ ...prev, [file.path]: `Error reloading file: ${err.message}` }));
+    }
+  };
+
+  const handleSaveFile = async (file, newContent) => {
+    try {
+      await saveFileContent(file.path, newContent);
+      setFileContents((prev) => ({ ...prev, [file.path]: newContent }));
+      setOriginalContents((prev) => ({ ...prev, [file.path]: newContent }));
+    } catch (err) {
+      console.error('Failed to save file:', err);
+      throw err;
     }
   };
 
@@ -516,9 +531,11 @@ export default function App() {
               openFiles={openFiles}
               activeFile={activeFile}
               fileContents={fileContents}
+              originalContents={originalContents}
               onSelectFileTab={(file) => setActiveFile(file)}
               onCloseFileTab={handleCloseFileTab}
               onReloadFile={handleReloadFile}
+              onSaveFile={handleSaveFile}
               isExpanded={isFilePaneExpanded}
               onToggleExpand={() => setIsFilePaneExpanded(!isFilePaneExpanded)}
               onClosePane={() => setShowFilePane(false)}
