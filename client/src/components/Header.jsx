@@ -1,11 +1,15 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Bot, 
   FolderGit2, 
   RefreshCw,
   PanelLeftClose,
   PanelLeftOpen,
-  Columns
+  Columns,
+  User,
+  LogOut,
+  ChevronDown,
+  ShieldCheck
 } from 'lucide-react';
 
 export default function Header({ 
@@ -15,7 +19,25 @@ export default function Header({
   onToggleFilePane,
   showSidebar,
   onToggleSidebar,
+  currentUser,
+  onLogout
 }) {
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
+
+  // Close user menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const userInitial = currentUser?.email?.charAt(0).toUpperCase() || 'U';
+
   return (
     <header className="h-12 border-b border-border bg-surface/90 backdrop-blur px-3 flex items-center justify-between select-none z-10 font-mono">
       {/* Left: Sidebar Toggle, Brand & Workspace Path */}
@@ -54,8 +76,8 @@ export default function Header({
         </div>
       </div>
 
-      {/* Right: Clean & Simple Action Buttons */}
-      <div className="flex items-center gap-1.5">
+      {/* Right: Actions & User Profile */}
+      <div className="flex items-center gap-2">
         {/* Simple Icon Button to Toggle File Pane */}
         <button
           onClick={onToggleFilePane}
@@ -77,6 +99,54 @@ export default function Header({
         >
           <RefreshCw className="w-4 h-4" />
         </button>
+
+        {/* Google User Profile Pill & Dropdown */}
+        {currentUser && (
+          <div className="relative pl-1 border-l border-border/60" ref={userMenuRef}>
+            <button
+              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              className="flex items-center gap-2 px-2 py-1 rounded-lg bg-surface/80 hover:bg-surface border border-border/70 text-slate-200 transition-all text-xs"
+            >
+              {/* Google Avatar Circle */}
+              <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-500 flex items-center justify-center text-white text-[10px] font-bold shadow-sm">
+                {userInitial}
+              </div>
+              <span className="hidden md:inline truncate max-w-[130px] text-[11px] text-slate-300 font-sans">
+                {currentUser.email}
+              </span>
+              <ChevronDown className={`w-3 h-3 text-slate-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* Profile Dropdown Menu */}
+            {isUserMenuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-60 bg-[#0d121c] border border-border/90 rounded-xl shadow-2xl p-2 z-50 space-y-2 animate-fadeIn text-xs">
+                <div className="p-2 rounded-lg bg-surface/80 border border-border/50 space-y-1">
+                  <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                    <ShieldCheck className="w-3 h-3" />
+                    <span>Google Account</span>
+                  </div>
+                  <div className="text-[11px] text-white font-medium truncate font-sans">
+                    {currentUser.email}
+                  </div>
+                  <div className="text-[9px] text-slate-400">
+                    Connected to Antigravity CLI
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    onLogout();
+                  }}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-rose-300 hover:bg-rose-500/15 hover:text-rose-200 transition-colors text-[11px]"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Switch Account / Sign Out</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );

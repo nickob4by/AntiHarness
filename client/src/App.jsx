@@ -5,6 +5,7 @@ import MainCanvas from './components/MainCanvas';
 import FileViewerPane from './components/FileViewerPane';
 import ResizeHandle from './components/ResizeHandle';
 import StatusBar from './components/StatusBar';
+import LoginPage from './components/LoginPage';
 import { 
   getSystemHealth, 
   getUsage,
@@ -54,6 +55,15 @@ function createInitialTabForProject(projectPath, projectName, tabIndex = 0) {
 }
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('antiharness_user_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [systemHealth, setSystemHealth] = useState(null);
   const [workspace, setWorkspace] = useState(null);
@@ -773,6 +783,25 @@ export default function App() {
     wsClientRef.current?.send('STOP_AGENT_PROMPT', { sessionId: activeTabId });
   };
 
+  const handleLogin = (user) => {
+    setCurrentUser(user);
+    try {
+      localStorage.setItem('antiharness_user_session', JSON.stringify(user));
+    } catch (e) {}
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    try {
+      localStorage.removeItem('antiharness_user_session');
+    } catch (e) {}
+  };
+
+  // 0. Render Login Page if not authenticated
+  if (!currentUser) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-background text-slate-100 font-sans">
       {/* Top Header */}
@@ -783,6 +812,8 @@ export default function App() {
         onToggleFilePane={() => setShowFilePane(!showFilePane)}
         showSidebar={showSidebar}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
+        currentUser={currentUser}
+        onLogout={handleLogout}
       />
 
       {/* Main Workspace Layout with Resizers */}
