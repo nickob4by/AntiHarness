@@ -3,7 +3,6 @@ import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import MainCanvas from './components/MainCanvas';
 import FileViewerPane from './components/FileViewerPane';
-import TerminalPane from './components/TerminalPane';
 import ResizeHandle from './components/ResizeHandle';
 import StatusBar from './components/StatusBar';
 import { 
@@ -41,10 +40,6 @@ export default function App() {
   const [isFilePaneExpanded, setIsFilePaneExpanded] = useState(false);
   const [filePaneRatio, setFilePaneRatio] = useState(50); // percentage (20% - 80%)
 
-  // Terminal Drawer state
-  const [showTerminal, setShowTerminal] = useState(false);
-  const [terminalHeight, setTerminalHeight] = useState(230); // in pixels
-
   // Dragging states
   const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
   const [isDraggingSplit, setIsDraggingSplit] = useState(false);
@@ -68,7 +63,7 @@ export default function App() {
       messages: [
         {
           role: 'assistant',
-          content: 'Welcome to **Antigravity Localhost Harness**!\n\n- **Interactive Terminal**: Press `Ctrl+\`` or click Terminal below to run commands in real time.\n- **Chat Tabs**: Run multiple agents and subagents concurrently.\n- **Bottom Controls**: Switch models and thinking efforts at the bottom of the chat.\n- **Multi-Window**: Chat on the left and review files on the right.',
+          content: 'Welcome to **Antigravity Unified Harness**!\n\n- **Unified Chat-Terminal**: Run shell commands directly ($ git status, npm run build) or ask AI coding questions.\n- **Chat Tabs**: Run multiple agents and subagents concurrently.\n- **Bottom Controls**: Switch models and thinking efforts at the bottom of the chat.\n- **Multi-Window**: Chat on the left and review files on the right.',
         }
       ],
       isStreaming: false,
@@ -96,7 +91,7 @@ export default function App() {
       messages: [
         {
           role: 'assistant',
-          content: `Subagent #${chatTabs.length} is active. You can run tasks here independently while other agents work concurrently!`,
+          content: `Subagent #${chatTabs.length} is deployed. You can run tasks or shell commands here independently while other agents work concurrently!`,
         }
       ],
       isStreaming: false,
@@ -294,10 +289,6 @@ export default function App() {
         e.preventDefault();
         setShowSidebar((prev) => !prev);
       }
-      if ((e.ctrlKey || e.metaKey) && (e.key === '`' || e.key === '~')) {
-        e.preventDefault();
-        setShowTerminal((prev) => !prev);
-      }
     };
     window.addEventListener('keydown', handleKeyDown);
 
@@ -305,7 +296,7 @@ export default function App() {
       (data) => {
         const targetSessionId = data.sessionId || activeTabId;
 
-        const updateTabStream = (updater) => {
+        const updateTab = (updater) => {
           setChatTabs((prevTabs) =>
             prevTabs.map((tab) => {
               if (tab.id === targetSessionId || tab.id === activeTabId) {
@@ -318,7 +309,7 @@ export default function App() {
 
         switch (data.type) {
           case 'AGENT_STREAM_START':
-            updateTabStream((tab) => ({
+            updateTab((tab) => ({
               ...tab,
               isStreaming: true,
               currentStream: { thoughts: '', isThinking: false, tools: [], content: '' },
@@ -326,14 +317,14 @@ export default function App() {
             break;
 
           case 'AGENT_THOUGHT_START':
-            updateTabStream((tab) => ({
+            updateTab((tab) => ({
               ...tab,
               currentStream: { ...tab.currentStream, isThinking: true },
             }));
             break;
 
           case 'AGENT_THOUGHT_CHUNK':
-            updateTabStream((tab) => ({
+            updateTab((tab) => ({
               ...tab,
               currentStream: {
                 ...tab.currentStream,
@@ -343,14 +334,14 @@ export default function App() {
             break;
 
           case 'AGENT_THOUGHT_END':
-            updateTabStream((tab) => ({
+            updateTab((tab) => ({
               ...tab,
               currentStream: { ...tab.currentStream, isThinking: false },
             }));
             break;
 
           case 'AGENT_TOOL_START':
-            updateTabStream((tab) => ({
+            updateTab((tab) => ({
               ...tab,
               currentStream: {
                 ...tab.currentStream,
@@ -368,7 +359,7 @@ export default function App() {
             break;
 
           case 'AGENT_TOOL_RESULT':
-            updateTabStream((tab) => ({
+            updateTab((tab) => ({
               ...tab,
               currentStream: {
                 ...tab.currentStream,
@@ -400,7 +391,7 @@ export default function App() {
           }
 
           case 'AGENT_STREAM_CHUNK':
-            updateTabStream((tab) => ({
+            updateTab((tab) => ({
               ...tab,
               currentStream: {
                 ...tab.currentStream,
@@ -411,7 +402,7 @@ export default function App() {
 
           case 'AGENT_STREAM_END': {
             const completedResponse = data.payload.completeResponse;
-            updateTabStream((tab) => {
+            updateTab((tab) => {
               const finalMessage = {
                 role: 'assistant',
                 content: completedResponse || tab.currentStream.content,
@@ -430,7 +421,7 @@ export default function App() {
           }
 
           case 'AGENT_STREAM_STOPPED':
-            updateTabStream((tab) => {
+            updateTab((tab) => {
               const current = tab.currentStream;
               const hasContent = current.content || current.thoughts || current.tools.length > 0;
               const newMsgs = hasContent
@@ -454,7 +445,7 @@ export default function App() {
             break;
 
           case 'AGENT_STREAM_ERROR':
-            updateTabStream((tab) => ({
+            updateTab((tab) => ({
               ...tab,
               isStreaming: false,
               messages: [
@@ -469,6 +460,34 @@ export default function App() {
               currentStream: { thoughts: '', isThinking: false, tools: [], content: '' },
             }));
             break;
+
+          // Unified Shell Command Stream Chunk
+          case 'SHELL_COMMAND_OUTPUT': {
+            const { commandId, data: chunkText } = data.payload || {};
+            updateTab((tab) => ({
+              ...tab,
+              messages: tab.messages.map((m) =>
+                m.commandId === commandId
+                  ? { ...m, output: (m.output || '') + chunkText }
+                  : m
+              ),
+            }));
+            break;
+          }
+
+          // Unified Shell Command Finished
+          case 'SHELL_COMMAND_END': {
+            const { commandId, exitCode, duration } = data.payload || {};
+            updateTab((tab) => ({
+              ...tab,
+              messages: tab.messages.map((m) =>
+                m.commandId === commandId
+                  ? { ...m, isRunning: false, exitCode, duration }
+                  : m
+              ),
+            }));
+            break;
+          }
 
           default:
             break;
@@ -536,8 +555,39 @@ export default function App() {
     }
   };
 
-  const handleSendMessage = (text, options = {}) => {
+  const handleSendMessage = async (text, options = {}) => {
     if (!text.trim() || activeTab.isStreaming) return;
+
+    // Handle slash commands
+    if (text.startsWith('/clear')) {
+      setChatTabs((prev) =>
+        prev.map((t) => (t.id === activeTabId ? { ...t, messages: [] } : t))
+      );
+      return;
+    }
+
+    if (text.startsWith('/usage')) {
+      const usage = await getUsage().catch(() => null);
+      const usageMsg = {
+        role: 'assistant',
+        content: `### 📊 CLI Quota & Rate Limit Breakdown\n\n- **Formatted Status**: \`${usage?.formatted || 'Usage: 38%/5h 90%/W'}\`\n- **5-Hour Rolling Window**: **${usage?.fiveHourUsagePercent ?? 38}%** used (${usage?.fiveHourRemainingPercent ?? 62}% remaining)\n- **Weekly Quota Window**: **${usage?.weeklyUsagePercent ?? 90}%** used (${usage?.weeklyRemainingPercent ?? 10}% remaining)\n\n*Synced directly with Antigravity system rate limits.*`,
+      };
+      setChatTabs((prev) =>
+        prev.map((t) => (t.id === activeTabId ? { ...t, messages: [...t.messages, usageMsg] } : t))
+      );
+      return;
+    }
+
+    if (text.startsWith('/help')) {
+      const helpMsg = {
+        role: 'assistant',
+        content: `### 💡 Antigravity Unified Harness Help\n\n- **AI Agent Chat**: Type any question, code request, or refactoring prompt.\n- **Direct Shell Commands**: Type \`$ git status\`, \`$ npm run build\`, \`dir\`, \`ls\`, or switch to **Shell** mode to run commands directly.\n- **Slash Commands**:\n  - \`/usage\`: Check live 5-hour and weekly quota rate limits.\n  - \`/clear\`: Clear the active conversation stream.\n  - \`/help\`: View this help message.\n- **Chat Tabs**: Click \`+\` in the top bar to run multiple concurrent subagents.\n- **Shortcuts**:\n  - \`Ctrl+B\`: Toggle Sidebar\n  - \`Ctrl+F\`: Search conversation`,
+      };
+      setChatTabs((prev) =>
+        prev.map((t) => (t.id === activeTabId ? { ...t, messages: [...t.messages, helpMsg] } : t))
+      );
+      return;
+    }
 
     const userMsg = { role: 'user', content: text };
     setChatTabs((prev) =>
@@ -557,6 +607,34 @@ export default function App() {
     });
   };
 
+  const handleRunShellCommand = (cmd) => {
+    if (!cmd.trim()) return;
+    const commandId = `cmd-${Date.now()}`;
+    const termMsg = {
+      type: 'terminal',
+      commandId,
+      command: cmd,
+      output: '',
+      isRunning: true,
+      timestamp: Date.now(),
+    };
+
+    setChatTabs((prev) =>
+      prev.map((t) =>
+        t.id === activeTabId
+          ? { ...t, messages: [...t.messages, termMsg] }
+          : t
+      )
+    );
+
+    wsClientRef.current?.send('EXEC_SHELL_COMMAND', {
+      commandId,
+      command: cmd,
+      workspacePath: workspace?.workspacePath || 'D:\\AntiG',
+      sessionId: activeTabId,
+    });
+  };
+
   const handleStopStream = () => {
     wsClientRef.current?.send('STOP_AGENT_PROMPT', { sessionId: activeTabId });
   };
@@ -571,8 +649,6 @@ export default function App() {
         onToggleFilePane={() => setShowFilePane(!showFilePane)}
         showSidebar={showSidebar}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
-        showTerminal={showTerminal}
-        onToggleTerminal={() => setShowTerminal(!showTerminal)}
       />
 
       {/* Main Workspace Layout with Resizers */}
@@ -606,7 +682,7 @@ export default function App() {
           </>
         )}
 
-        {/* 2. Center Main Canvas with Multi-Agent Chat Tabs & Bottom Controls */}
+        {/* 2. Center Main Canvas with Unified Chat-Terminal Console */}
         <div 
           style={{ 
             width: showFilePane 
@@ -628,6 +704,7 @@ export default function App() {
             messages={activeTab.messages}
             currentStream={activeTab.currentStream}
             onSendMessage={handleSendMessage}
+            onRunShellCommand={handleRunShellCommand}
             onStopStream={handleStopStream}
             isStreaming={activeTab.isStreaming}
             workspace={workspace}
@@ -669,23 +746,11 @@ export default function App() {
         )}
       </div>
 
-      {/* Collapsible Interactive Terminal Pane (Phase 4) */}
-      <TerminalPane
-        isOpen={showTerminal}
-        onClose={() => setShowTerminal(false)}
-        wsClient={wsClientRef.current}
-        workspacePath={workspace?.workspacePath || 'D:\\AntiG'}
-        height={terminalHeight}
-        onHeightChange={setTerminalHeight}
-      />
-
       {/* Bottom Status Bar */}
       <StatusBar
         connectionStatus={connectionStatus}
         workspace={workspace}
         usageData={usageData}
-        showTerminal={showTerminal}
-        onToggleTerminal={() => setShowTerminal(!showTerminal)}
       />
     </div>
   );

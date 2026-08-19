@@ -1,6 +1,7 @@
 import { WebSocketServer } from 'ws';
+import { spawn } from 'child_process';
+import path from 'path';
 import { AgentEngine, stopSession } from './agentEngine.js';
-import { TerminalRunner } from './terminalRunner.js';
 
 export function setupWebSocket(server) {
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -9,7 +10,7 @@ export function setupWebSocket(server) {
     console.log('Client connected to WebSocket harness');
 
     let currentAgent = null;
-    let terminalRunner = null;
+    const activeShellCommands = new Map();
 
     ws.send(
       JSON.stringify({
@@ -56,30 +57,86 @@ export function setupWebSocket(server) {
             break;
           }
 
-          case 'TERMINAL_INIT': {
-            const { workspacePath } = data.payload || {};
-            if (!terminalRunner) {
-              terminalRunner = new TerminalRunner(ws, workspacePath || process.cwd());
-            } else if (workspacePath) {
-              terminalRunner.setCwd(workspacePath);
-            }
-            break;
-          }
+          case 'EXEC_SHELL_COMMAND': {
+            const { commandId, command, workspacePath, sessionId } = data.payload || {};
+            if (!command) return;
 
-          case 'TERMINAL_INPUT': {
-            const { input } = data.payload || {};
-            if (terminalRunner && input !== undefined) {
-              terminalRunner.write(input);
-            }
-            break;
-          }
+            const isWindows = process.platform === 'win32';
+            const shell = isWindows ? 'powershell.exe' : (process.env.SHELL || 'bash');
+            const shellArgs = isWindows ? ['-NoLogo', '-Command', command] : ['-c', command];
+            const startTime = Date.now();
 
-          case 'TERMINAL_RESTART': {
-            const { workspacePath } = data.payload || {};
-            if (terminalRunner) {
-              terminalRunner.destroy();
+            try {
+              const child = spawn(shell, shellArgs, {
+                cwd: workspacePath || process.cwd(),
+                env: {
+                  ...process.env,
+                  TERM: 'xterm-256color',
+                  COLORTERM: 'truecolor',
+                },
+              });
+
+              activeShellCommands.set(commandId, child);
+
+              child.stdout.on('data', (chunk) => {
+                const text = chunk.toString('utf-8');
+                ws.send(JSON.stringify({
+                  type: 'SHELL_COMMAND_OUTPUT',
+                  sessionId,
+                  payload: { commandId, data: text },
+                }));
+              });
+
+              child.stderr.on('data', (chunk) => {
+                const text = chunk.toString('utf-8');
+                ws.send(JSON.stringify({
+                  type: 'SHELL_COMMAND_OUTPUT',
+                  sessionId,
+                  payload: { commandId, data: text },
+                }));
+              });
+
+              child.on('close', (code) => {
+                activeShellCommands.delete(commandId);
+                const durationMs = Date.now() - startTime;
+                const formattedDuration = durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(1)}s`;
+
+                ws.send(JSON.stringify({
+                  type: 'SHELL_COMMAND_END',
+                  sessionId,
+                  payload: {
+                    commandId,
+                    exitCode: code,
+                    duration: formattedDuration,
+                  },
+                }));
+              });
+
+              child.on('error', (err) => {
+                activeShellCommands.delete(commandId);
+                ws.send(JSON.stringify({
+                  type: 'SHELL_COMMAND_END',
+                  sessionId,
+                  payload: {
+                    commandId,
+                    exitCode: 1,
+                    error: err.message,
+                    duration: `${Date.now() - startTime}ms`,
+                  },
+                }));
+              });
+            } catch (err) {
+              ws.send(JSON.stringify({
+                type: 'SHELL_COMMAND_END',
+                sessionId,
+                payload: {
+                  commandId,
+                  exitCode: 1,
+                  error: err.message,
+                  duration: '0ms',
+                },
+              }));
             }
-            terminalRunner = new TerminalRunner(ws, workspacePath || process.cwd());
             break;
           }
 
@@ -101,10 +158,12 @@ export function setupWebSocket(server) {
       if (currentAgent) {
         currentAgent.abort();
       }
-      if (terminalRunner) {
-        terminalRunner.destroy();
-        terminalRunner = null;
-      }
+      activeShellCommands.forEach((child) => {
+        try {
+          child.kill('SIGINT');
+        } catch (e) {}
+      });
+      activeShellCommands.clear();
     });
   });
 

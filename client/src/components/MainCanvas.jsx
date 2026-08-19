@@ -18,11 +18,14 @@ import {
   ArrowUp, 
   ArrowDown,
   Plus,
-  MessageSquare
+  Zap,
+  Code2,
+  HelpCircle
 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import ThinkingBox from './ThinkingBox';
 import ToolCard from './ToolCard';
+import TerminalCommandCard from './TerminalCommandCard';
 
 const AVAILABLE_MODELS = [
   { id: 'gemini-3.7-flash', name: 'Gemini 3.7 Flash', desc: 'Default • Ultra-fast agentic coding' },
@@ -44,16 +47,15 @@ const THINKING_EFFORTS = [
 export default function MainCanvas({
   selectedSessionTranscript,
   selectedSessionId,
-  // Chat tabs props
   chatTabs = [],
   activeTabId,
   onSelectChatTab,
   onAddChatTab,
   onCloseChatTab,
-  // Active tab state
   messages = [],
   currentStream,
   onSendMessage,
+  onRunShellCommand,
   onStopStream,
   isStreaming,
   workspace
@@ -62,6 +64,7 @@ export default function MainCanvas({
   const [showHistoryTray, setShowHistoryTray] = useState(false);
   const [selectedModel, setSelectedModel] = useState('gemini-3.7-flash');
   const [thinkingEffort, setThinkingEffort] = useState('medium');
+  const [inputMode, setInputMode] = useState('auto'); // 'auto' | 'agent' | 'shell'
   
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isThinkingDropdownOpen, setIsThinkingDropdownOpen] = useState(false);
@@ -101,12 +104,33 @@ export default function MainCanvas({
 
   const handleSend = (e) => {
     e?.preventDefault();
-    if (!inputPrompt.trim() || isStreaming) return;
-    const activeModelObj = AVAILABLE_MODELS.find((m) => m.id === selectedModel);
-    onSendMessage(inputPrompt, {
-      model: activeModelObj?.name || 'Gemini 3.7 Flash',
-      thinkingEffort,
-    });
+    const trimmed = inputPrompt.trim();
+    if (!trimmed || isStreaming) return;
+
+    // Check if input is a shell command (starts with $ or >, or in shell mode, or common shell commands)
+    const isShellCommand = 
+      inputMode === 'shell' ||
+      trimmed.startsWith('$ ') || 
+      trimmed.startsWith('> ') ||
+      trimmed.startsWith('git ') || 
+      trimmed.startsWith('npm ') || 
+      trimmed.startsWith('dir') || 
+      trimmed.startsWith('ls') || 
+      trimmed.startsWith('cd ') ||
+      trimmed.startsWith('node ') ||
+      trimmed.startsWith('python ');
+
+    if (isShellCommand) {
+      const cleanCommand = trimmed.replace(/^[\$>]\s*/, '');
+      onRunShellCommand(cleanCommand);
+    } else {
+      const activeModelObj = AVAILABLE_MODELS.find((m) => m.id === selectedModel);
+      onSendMessage(trimmed, {
+        model: activeModelObj?.name || 'Gemini 3.7 Flash',
+        thinkingEffort,
+      });
+    }
+
     setInputPrompt('');
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -128,6 +152,8 @@ export default function MainCanvas({
     messages.forEach((msg, idx) => {
       if (
         (msg.content && msg.content.toLowerCase().includes(query)) ||
+        (msg.command && msg.command.toLowerCase().includes(query)) ||
+        (msg.output && msg.output.toLowerCase().includes(query)) ||
         (msg.thoughts && msg.thoughts.toLowerCase().includes(query))
       ) {
         indices.push(idx);
@@ -208,7 +234,7 @@ export default function MainCanvas({
           {/* Plus (+) Button to spawn new agent tab */}
           <button
             onClick={onAddChatTab}
-            title="Spawn new Agent / Subagent Tab"
+            title="Deploy new Agent / Subagent Tab"
             className="p-1.5 hover:bg-surface-hover rounded-md text-slate-400 hover:text-indigo-300 transition-colors ml-0.5"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -270,7 +296,7 @@ export default function MainCanvas({
                   setShowChatSearch(false);
                 }
               }}
-              placeholder="Find in chat messages..."
+              placeholder="Find in chat or terminal outputs..."
               className="w-full bg-surface border border-border/80 rounded px-2.5 py-1 text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 font-mono"
             />
           </div>
@@ -386,7 +412,7 @@ export default function MainCanvas({
         </div>
       )}
 
-      {/* 4. CHAT MESSAGES CONTAINER */}
+      {/* 4. CHAT MESSAGES CONTAINER (AGENT CHAT + INLINE TERMINAL OUTPUTS) */}
       <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
         <div className="max-w-3xl mx-auto w-full space-y-6">
           {messages.length === 0 && !isStreaming ? (
@@ -395,40 +421,57 @@ export default function MainCanvas({
                 <Sparkles className="w-7 h-7" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-white">Antigravity Localhost Harness</h3>
+                <h3 className="text-base font-semibold text-white">Antigravity Unified Console</h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Chat with the agent on the left, and review your workspace files in the right pane.
+                  Chat with the AI or run terminal commands directly in this prompt box!
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-2 w-full pt-2">
                 <button 
-                  onClick={() => {
-                    setInputPrompt("List files in the workspace and analyze project structure");
-                  }}
+                  onClick={() => onRunShellCommand("git status")}
                   className="p-3 text-left rounded-lg bg-surface/60 hover:bg-surface border border-border transition-all text-xs hover:border-indigo-500/40"
                 >
-                  <div className="font-medium text-slate-200">📁 List Files</div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Inspect workspace folders</div>
+                  <div className="font-medium text-slate-200">⚡ git status</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Run repository status</div>
                 </button>
                 <button 
-                  onClick={() => {
-                    setInputPrompt("Check system status, CPU, RAM and Node runtime");
-                  }}
+                  onClick={() => onRunShellCommand("npm run build")}
                   className="p-3 text-left rounded-lg bg-surface/60 hover:bg-surface border border-border transition-all text-xs hover:border-indigo-500/40"
                 >
-                  <div className="font-medium text-slate-200">⚡ Check Status</div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">System diagnostics</div>
+                  <div className="font-medium text-slate-200">⚡ npm run build</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Test project build</div>
                 </button>
               </div>
             </div>
           ) : (
             <>
-              {/* Completed Messages */}
+              {/* Completed Messages & Terminal Command Executions */}
               {messages.map((msg, idx) => {
                 const isMatch = matchingMessageIndices.includes(idx);
                 const isCurrentActiveMatch = isMatch && matchingMessageIndices[activeMatchIndex] === idx;
 
+                // Terminal Execution Card
+                if (msg.type === 'terminal') {
+                  return (
+                    <div 
+                      key={idx}
+                      ref={(el) => (messageRefs.current[idx] = el)}
+                      className={`w-full ${isCurrentActiveMatch ? 'ring-2 ring-indigo-500 rounded-2xl p-1' : ''}`}
+                    >
+                      <TerminalCommandCard
+                        command={msg.command}
+                        output={msg.output}
+                        exitCode={msg.exitCode}
+                        duration={msg.duration}
+                        isRunning={msg.isRunning}
+                        onRerun={(cmd) => onRunShellCommand(cmd)}
+                      />
+                    </div>
+                  );
+                }
+
+                // Standard Agent Message
                 return (
                   <div 
                     key={idx} 
@@ -523,114 +566,158 @@ export default function MainCanvas({
         </div>
       </div>
 
-      {/* 5. PROMPT INPUT BAR WITH BOTTOM MODEL & THINKING SELECTORS */}
+      {/* 5. UNIFIED PROMPT & TERMINAL INPUT BAR */}
       <div className="p-4 border-t border-border bg-surface/40 backdrop-blur select-none">
         <form onSubmit={handleSend} className="max-w-3xl mx-auto w-full bg-surface/90 border border-border rounded-xl p-2.5 space-y-2 focus-within:border-indigo-500/80 focus-within:ring-1 focus-within:ring-indigo-500/40 transition-all shadow-sm">
-          {/* Expanding Monospace Textarea */}
+          {/* Expanding Monospace Input */}
           <textarea
             ref={textareaRef}
             value={inputPrompt}
             onChange={(e) => setInputPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={1}
-            placeholder="Message Antigravity or give instructions to this agent... (Shift+Enter for newline)"
+            placeholder={
+              inputMode === 'shell'
+                ? "Enter shell command... (e.g. npm run build, git status, dir)"
+                : "Message Antigravity or type shell command ($ git status, npm test)..."
+            }
             className="w-full bg-transparent border-0 text-xs text-white placeholder-slate-500 focus:outline-none resize-none font-mono px-1 py-0.5 leading-relaxed max-h-32"
           />
 
-          {/* Bottom Toolbar: Model Selector, Thinking Effort & Send Button */}
+          {/* Bottom Toolbar: Mode Toggle, Model Selector, Thinking & Execute */}
           <div className="flex items-center justify-between pt-1 border-t border-border/40 text-[11px]">
-            {/* Left: Model & Thinking Selectors positioned at bottom */}
-            <div className="flex items-center gap-1.5">
-              {/* Model Dropdown */}
-              <div className="relative">
+            {/* Left Controls: Mode + Model + Thinking */}
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+              {/* Input Mode Toggle: Auto / Agent / Shell */}
+              <div className="flex items-center bg-surface border border-border/70 rounded p-0.5 text-[10px]">
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsModelDropdownOpen(!isModelDropdownOpen);
-                    setIsThinkingDropdownOpen(false);
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40 transition-all text-[10px]"
+                  onClick={() => setInputMode('auto')}
+                  className={`px-1.5 py-0.5 rounded transition-colors ${
+                    inputMode === 'auto' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Auto-detect AI prompt or shell command"
                 >
-                  <Cpu className="w-3 h-3 text-indigo-400" />
-                  <span className="font-medium text-slate-200">{currentModelName}</span>
-                  <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                  Auto
                 </button>
-
-                {isModelDropdownOpen && (
-                  <div 
-                    className="absolute left-0 bottom-full mb-1.5 w-64 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
-                    onMouseLeave={() => setIsModelDropdownOpen(false)}
-                  >
-                    <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                      Select Model
-                    </div>
-                    {AVAILABLE_MODELS.map((model) => (
-                      <button
-                        key={model.id}
-                        onClick={() => {
-                          setSelectedModel(model.id);
-                          setIsModelDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-2 py-1.5 rounded-lg transition-colors text-[11px] ${
-                          selectedModel === model.id
-                            ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                            : 'text-slate-300 hover:bg-surface-hover hover:text-white'
-                        }`}
-                      >
-                        <div className="font-medium">{model.name}</div>
-                        <div className="text-[9px] opacity-75 font-sans truncate">{model.desc}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setInputMode('agent')}
+                  className={`px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 ${
+                    inputMode === 'agent' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="AI Agent Chat Mode"
+                >
+                  <Bot className="w-2.5 h-2.5" />
+                  <span>Agent</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInputMode('shell')}
+                  className={`px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 ${
+                    inputMode === 'shell' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Terminal Shell Mode"
+                >
+                  <Terminal className="w-2.5 h-2.5" />
+                  <span>Shell</span>
+                </button>
               </div>
+
+              {/* Model Dropdown (when not in pure shell mode) */}
+              {inputMode !== 'shell' && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsModelDropdownOpen(!isModelDropdownOpen);
+                      setIsThinkingDropdownOpen(false);
+                    }}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface border border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40 transition-all text-[10px]"
+                  >
+                    <Cpu className="w-3 h-3 text-indigo-400" />
+                    <span className="font-medium text-slate-200">{currentModelName}</span>
+                    <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                  </button>
+
+                  {isModelDropdownOpen && (
+                    <div 
+                      className="absolute left-0 bottom-full mb-1.5 w-64 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
+                      onMouseLeave={() => setIsModelDropdownOpen(false)}
+                    >
+                      <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                        Select Model
+                      </div>
+                      {AVAILABLE_MODELS.map((model) => (
+                        <button
+                          key={model.id}
+                          onClick={() => {
+                            setSelectedModel(model.id);
+                            setIsModelDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors text-[11px] ${
+                            selectedModel === model.id
+                              ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                              : 'text-slate-300 hover:bg-surface-hover hover:text-white'
+                          }`}
+                        >
+                          <div className="font-medium">{model.name}</div>
+                          <div className="text-[9px] opacity-75 font-sans truncate">{model.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Thinking Effort Dropdown */}
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsThinkingDropdownOpen(!isThinkingDropdownOpen);
-                    setIsModelDropdownOpen(false);
-                  }}
-                  className="flex items-center gap-1 px-2 py-1 rounded bg-surface border border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40 transition-all text-[10px]"
-                >
-                  <Brain className="w-3 h-3 text-indigo-400" />
-                  <span>{currentThinkingLabel}</span>
-                  <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
-                </button>
-
-                {isThinkingDropdownOpen && (
-                  <div 
-                    className="absolute left-0 bottom-full mb-1.5 w-56 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
-                    onMouseLeave={() => setIsThinkingDropdownOpen(false)}
+              {inputMode !== 'shell' && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsThinkingDropdownOpen(!isThinkingDropdownOpen);
+                      setIsModelDropdownOpen(false);
+                    }}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface border border-border/70 text-slate-300 hover:text-white hover:border-indigo-500/40 transition-all text-[10px]"
                   >
-                    <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                      Thinking Effort
+                    <Brain className="w-3 h-3 text-indigo-400" />
+                    <span>{currentThinkingLabel}</span>
+                    <ChevronDown className="w-2.5 h-2.5 text-slate-400" />
+                  </button>
+
+                  {isThinkingDropdownOpen && (
+                    <div 
+                      className="absolute left-0 bottom-full mb-1.5 w-56 bg-[#0e131d] border border-border rounded-xl shadow-2xl p-1.5 z-30 space-y-0.5 animate-fadeIn"
+                      onMouseLeave={() => setIsThinkingDropdownOpen(false)}
+                    >
+                      <div className="px-2 py-1 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                        Thinking Effort
+                      </div>
+                      {THINKING_EFFORTS.map((effort) => (
+                        <button
+                          key={effort.id}
+                          onClick={() => {
+                            setThinkingEffort(effort.id);
+                            setIsThinkingDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors text-[11px] ${
+                            thinkingEffort === effort.id
+                              ? 'bg-indigo-600 text-white font-medium shadow-sm'
+                              : 'text-slate-300 hover:bg-surface-hover hover:text-white'
+                          }`}
+                        >
+                          <div className="font-medium">{effort.label}</div>
+                          <div className="text-[9px] opacity-75 font-sans truncate">{effort.desc}</div>
+                        </button>
+                      ))}
                     </div>
-                    {THINKING_EFFORTS.map((effort) => (
-                      <button
-                        key={effort.id}
-                        onClick={() => {
-                          setThinkingEffort(effort.id);
-                          setIsThinkingDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-2 py-1.5 rounded-lg transition-colors text-[11px] ${
-                          thinkingEffort === effort.id
-                            ? 'bg-indigo-600 text-white font-medium shadow-sm'
-                            : 'text-slate-300 hover:bg-surface-hover hover:text-white'
-                        }`}
-                      >
-                        <div className="font-medium">{effort.label}</div>
-                        <div className="text-[9px] opacity-75 font-sans truncate">{effort.desc}</div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Right: Send / Stop Button */}
+            {/* Right: Send / Stop Action Button */}
             <div className="flex items-center">
               {isStreaming ? (
                 <button
@@ -647,8 +734,8 @@ export default function MainCanvas({
                   disabled={!inputPrompt.trim()}
                   className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white rounded-lg text-[11px] font-medium flex items-center gap-1.5 transition-all shadow-sm font-mono h-7"
                 >
-                  <span>Send</span>
-                  <Send className="w-3 h-3" />
+                  <span>{inputMode === 'shell' ? 'Run' : 'Send'}</span>
+                  {inputMode === 'shell' ? <Terminal className="w-3 h-3" /> : <Send className="w-3 h-3" />}
                 </button>
               )}
             </div>
