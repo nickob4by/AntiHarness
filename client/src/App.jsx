@@ -7,6 +7,7 @@ import ResizeHandle from './components/ResizeHandle';
 import StatusBar from './components/StatusBar';
 import LoginPage from './components/LoginPage';
 import SkillsHub from './components/SkillsHub';
+import CodebaseGraphViewer from './components/CodebaseGraphViewer';
 import { 
   getSystemHealth, 
   getUsage,
@@ -893,6 +894,22 @@ export default function App() {
                 setCurrentMainView('console');
                 setShowFilePane(true);
                 handleOpenFile(file);
+              }}
+              onClose={() => setCurrentMainView('console')}
+            />
+          </div>
+        ) : currentMainView === 'graph' ? (
+          <div className="flex-1 h-full overflow-hidden">
+            <CodebaseGraphViewer
+              activeProject={{ name: workspace?.name, workspacePath: activeProjectPath }}
+              onOpenFile={(file) => {
+                setCurrentMainView('console');
+                setShowFilePane(true);
+                handleOpenFile(file);
+              }}
+              onSendPromptToChat={(prompt) => {
+                setCurrentMainView('console');
+                handleSendMessage(prompt);
               }}
               onClose={() => setCurrentMainView('console')}
             />

@@ -10,7 +10,8 @@ import {
   LogOut,
   ChevronDown,
   ShieldCheck,
-  Sparkles
+  Sparkles,
+  Network
 } from 'lucide-react';
 
 export default function Header({ 
@@ -85,7 +86,7 @@ export default function Header({
 
       {/* Center: Main View Mode Switcher + Compact Chat/Code Toggle */}
       <div className="flex items-center gap-1.5 sm:gap-2">
-        {/* Main View Switcher: Console vs Skills Hub */}
+        {/* Main View Switcher: Console vs Graph vs Skills Hub */}
         <div className="flex items-center bg-[#0d121c] border border-border/80 rounded-xl p-0.5 text-xs shadow-inner">
           <button
             onClick={() => onSelectMainView('console')}
@@ -98,6 +99,19 @@ export default function Header({
             <Bot className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Console & Code</span>
             <span className="sm:hidden">Console</span>
+          </button>
+
+          <button
+            onClick={() => onSelectMainView('graph')}
+            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 rounded-lg font-medium transition-all cursor-pointer text-[11px] sm:text-xs ${
+              currentMainView === 'graph'
+                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
+            }`}
+          >
+            <Network className="w-3.5 h-3.5 text-cyan-300" />
+            <span className="hidden sm:inline">Codebase Graph</span>
+            <span className="sm:hidden">Graph</span>
           </button>
 
           <button

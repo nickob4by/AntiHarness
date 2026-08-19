@@ -4,9 +4,11 @@ import fs from 'fs';
 import os from 'os';
 import { recordPromptUsage } from './routes/system.js';
 import { getRootWorkspace } from './routes/workspace.js';
+import { generateCodebaseGraph } from './services/graphEngine.js';
 
-// Store active agent stream runners
+// Store active agent stream runners and mapped sessions
 const activeRuns = new Map();
+const mappedSessions = new Set();
 
 export class AgentEngine {
   constructor(ws, sessionId) {
@@ -52,12 +54,26 @@ export class AgentEngine {
     // Notify client of initial thinking phase with initial status
     this.send('AGENT_THOUGHT_START', { timestamp: Date.now() });
     this.send('AGENT_THOUGHT_CHUNK', { 
-      text: `> Analyzing request for workspace: \`${resolvedWorkspace}\`...\n` 
-    });
+    // Auto-inject Token-Optimized Codebase Cartography if not yet mapped for this session
+    let finalPrompt = prompt;
+    if (!mappedSessions.has(this.sessionId)) {
+      try {
+        const cartography = await generateCodebaseGraph(resolvedWorkspace, 4);
+        if (cartography?.compressedMap) {
+          finalPrompt = `[CODEBASE CARTOGRAPHY & ARCHITECTURE MAP (TOKEN-OPTIMIZED)]:\n${cartography.compressedMap}\n\n[USER INSTRUCTION]:\n${prompt}`;
+          this.send('AGENT_THOUGHT_CHUNK', {
+            text: `> 🗺️ Injected Codebase Cartography: ${cartography.totalFiles} source files mapped (~${cartography.tokenStats.savingsPercent} exploratory token savings).\n`
+          });
+        }
+        mappedSessions.add(this.sessionId);
+      } catch (e) {
+        console.error('[AgentEngine] Failed to generate cartography map:', e);
+      }
+    }
 
     // Map UI model names to agy CLI arguments with stream-json format
     const args = [
-      '-p', prompt,
+      '-p', finalPrompt,
       '--add-dir', resolvedWorkspace,
       '--output-format', 'stream-json',
       '--dangerously-skip-permissions'

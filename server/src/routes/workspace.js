@@ -2,6 +2,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { generateCodebaseGraph } from '../services/graphEngine.js';
 
 const router = express.Router();
 
@@ -319,6 +320,17 @@ router.delete('/file', (req, res) => {
     }
 
     res.json({ success: true, path: resolved });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get Codebase Cartography & Dependency Graph
+router.get('/graph', async (req, res) => {
+  const targetPath = req.query.path || defaultRoot;
+  try {
+    const graphData = await generateCodebaseGraph(targetPath);
+    res.json(graphData);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

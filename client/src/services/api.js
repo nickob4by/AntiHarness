@@ -190,3 +190,14 @@ export async function deleteSkill(skillPath) {
   }
   return res.json();
 }
+
+export async function getCodebaseGraph(workspacePath = '') {
+  const query = workspacePath ? `?path=${encodeURIComponent(workspacePath)}` : '';
+  const res = await fetchWithTimeout(`/api/workspace/graph${query}`, {}, 15000);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to generate codebase graph');
+  }
+  return res.json();
+}
+
