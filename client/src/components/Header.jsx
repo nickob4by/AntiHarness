@@ -19,6 +19,8 @@ export default function Header({
   onToggleFilePane,
   showSidebar,
   onToggleSidebar,
+  currentMainView = 'console',
+  onSelectMainView,
   currentUser,
   onLogout
 }) {
@@ -74,6 +76,33 @@ export default function Header({
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Center: Main View Mode Switcher (Console vs Skills Hub) */}
+      <div className="flex items-center bg-[#0d121c] border border-border/80 rounded-xl p-0.5 text-xs shadow-inner">
+        <button
+          onClick={() => onSelectMainView('console')}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+            currentMainView === 'console'
+              ? 'bg-indigo-600 text-white shadow-sm font-semibold'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
+          }`}
+        >
+          <Bot className="w-3.5 h-3.5" />
+          <span>Console & Code</span>
+        </button>
+
+        <button
+          onClick={() => onSelectMainView('skills')}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+            currentMainView === 'skills'
+              ? 'bg-indigo-600 text-white shadow-sm font-semibold'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+          <span>Skills Hub</span>
+        </button>
       </div>
 
       {/* Right: Actions & User Profile */}

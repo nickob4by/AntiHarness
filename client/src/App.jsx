@@ -6,6 +6,7 @@ import FileViewerPane from './components/FileViewerPane';
 import ResizeHandle from './components/ResizeHandle';
 import StatusBar from './components/StatusBar';
 import LoginPage from './components/LoginPage';
+import SkillsHub from './components/SkillsHub';
 import { 
   getSystemHealth, 
   getUsage,
@@ -79,6 +80,7 @@ export default function App() {
   const [loadingFolders, setLoadingFolders] = useState({});
 
   // Layout toggles & Resizable widths
+  const [currentMainView, setCurrentMainView] = useState('console'); // 'console' | 'skills'
   const [showSidebar, setShowSidebar] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(260); // in pixels
   const [showFilePane, setShowFilePane] = useState(true);
@@ -817,103 +819,122 @@ export default function App() {
         onToggleFilePane={() => setShowFilePane(!showFilePane)}
         showSidebar={showSidebar}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
+        currentMainView={currentMainView}
+        onSelectMainView={setCurrentMainView}
         currentUser={currentUser}
         onLogout={handleLogout}
       />
 
       {/* Main Workspace Layout with Resizers */}
       <div ref={containerRef} className="flex flex-1 overflow-hidden relative">
-        {/* 1. Microsoft Edge Style Clean Sidebar with Nested Subfolder Trees */}
-        {showSidebar && (
-          <>
-            <Sidebar
-              width={sidebarWidth}
-              projects={projects}
+        {/* If Skills Hub view is active, render SkillsHub in full view */}
+        {currentMainView === 'skills' ? (
+          <div className="flex-1 h-full overflow-hidden">
+            <SkillsHub
               activeProject={{ name: workspace?.name, workspacePath: activeProjectPath }}
-              projectFilesMap={projectFilesMap}
-              expandedProjects={expandedProjects}
-              expandedFolders={expandedFolders}
-              folderChildrenMap={folderChildrenMap}
-              loadingFolders={loadingFolders}
-              onToggleProjectExpand={handleToggleProjectExpand}
-              onToggleFolder={handleToggleFolder}
-              onSelectProject={handleSelectProject}
-              onAddProject={handleAddProject}
-              onRemoveProject={handleRemoveProject}
-              onSelectFile={handleOpenFile}
-              selectedFile={activeFile}
-              onCollapse={() => setShowSidebar(false)}
-            />
-            <ResizeHandle
-              onMouseDown={handleSidebarMouseDown}
-              onDoubleClick={() => setSidebarWidth(260)}
-              isDragging={isDraggingSidebar}
-            />
-          </>
-        )}
-
-        {/* 2. Center Main Canvas with Project-Scoped Unified Chat-Terminal Console */}
-        <div 
-          style={{ 
-            width: showFilePane 
-              ? (isFilePaneExpanded ? '0%' : `${100 - filePaneRatio}%`) 
-              : '100%' 
-          }}
-          className={`flex flex-col overflow-hidden transition-none ${
-            showFilePane && isFilePaneExpanded ? 'hidden' : 'flex'
-          }`}
-        >
-          <MainCanvas
-            selectedSessionTranscript={selectedSessionTranscript}
-            selectedSessionId={selectedSessionId}
-            chatTabs={currentProjectTabs}
-            activeTabId={activeTabId}
-            onSelectChatTab={(id) => setActiveTabId(id)}
-            onAddChatTab={handleAddChatTab}
-            onCloseChatTab={handleCloseChatTab}
-            messages={activeTab.messages}
-            currentStream={activeTab.currentStream}
-            onSendMessage={handleSendMessage}
-            onRunShellCommand={handleRunShellCommand}
-            onStopStream={handleStopStream}
-            isStreaming={activeTab.isStreaming}
-            workspace={{ name: workspace?.name, workspacePath: activeProjectPath }}
-            onOpenFile={handleOpenFile}
-          />
-        </div>
-
-        {/* 3. Center-Right Resizer between Chat and File Pane */}
-        {showFilePane && !isFilePaneExpanded && (
-          <ResizeHandle
-            onMouseDown={handleSplitMouseDown}
-            onDoubleClick={() => setFilePaneRatio(50)}
-            isDragging={isDraggingSplit}
-          />
-        )}
-
-        {/* 4. Right Workspace File Viewer Window */}
-        {showFilePane && (
-          <div 
-            style={{ 
-              width: isFilePaneExpanded ? '100%' : `${filePaneRatio}%` 
-            }}
-            className="flex flex-col overflow-hidden transition-none"
-          >
-            <FileViewerPane
-              openFiles={openFiles}
-              activeFile={activeFile}
-              fileContents={fileContents}
-              originalContents={originalContents}
-              liveAiModifiedFile={liveAiModifiedFile}
-              onSelectFileTab={(file) => setActiveFile(file)}
-              onCloseFileTab={handleCloseFileTab}
-              onReloadFile={handleReloadFile}
-              onSaveFile={handleSaveFile}
-              isExpanded={isFilePaneExpanded}
-              onToggleExpand={() => setIsFilePaneExpanded(!isFilePaneExpanded)}
-              onClosePane={() => setShowFilePane(false)}
+              onOpenSkillFile={(file) => {
+                setCurrentMainView('console');
+                setShowFilePane(true);
+                handleOpenFile(file);
+              }}
+              onClose={() => setCurrentMainView('console')}
             />
           </div>
+        ) : (
+          <>
+            {/* 1. Microsoft Edge Style Clean Sidebar with Nested Subfolder Trees */}
+            {showSidebar && (
+              <>
+                <Sidebar
+                  width={sidebarWidth}
+                  projects={projects}
+                  activeProject={{ name: workspace?.name, workspacePath: activeProjectPath }}
+                  projectFilesMap={projectFilesMap}
+                  expandedProjects={expandedProjects}
+                  expandedFolders={expandedFolders}
+                  folderChildrenMap={folderChildrenMap}
+                  loadingFolders={loadingFolders}
+                  onToggleProjectExpand={handleToggleProjectExpand}
+                  onToggleFolder={handleToggleFolder}
+                  onSelectProject={handleSelectProject}
+                  onAddProject={handleAddProject}
+                  onRemoveProject={handleRemoveProject}
+                  onSelectFile={handleOpenFile}
+                  selectedFile={activeFile}
+                  onCollapse={() => setShowSidebar(false)}
+                />
+                <ResizeHandle
+                  onMouseDown={handleSidebarMouseDown}
+                  onDoubleClick={() => setSidebarWidth(260)}
+                  isDragging={isDraggingSidebar}
+                />
+              </>
+            )}
+
+            {/* 2. Center Main Canvas with Project-Scoped Unified Chat-Terminal Console */}
+            <div 
+              style={{ 
+                width: showFilePane 
+                  ? (isFilePaneExpanded ? '0%' : `${100 - filePaneRatio}%`) 
+                  : '100%' 
+              }}
+              className={`flex flex-col overflow-hidden transition-none ${
+                showFilePane && isFilePaneExpanded ? 'hidden' : 'flex'
+              }`}
+            >
+              <MainCanvas
+                selectedSessionTranscript={selectedSessionTranscript}
+                selectedSessionId={selectedSessionId}
+                chatTabs={currentProjectTabs}
+                activeTabId={activeTabId}
+                onSelectChatTab={(id) => setActiveTabId(id)}
+                onAddChatTab={handleAddChatTab}
+                onCloseChatTab={handleCloseChatTab}
+                messages={activeTab.messages}
+                currentStream={activeTab.currentStream}
+                onSendMessage={handleSendMessage}
+                onRunShellCommand={handleRunShellCommand}
+                onStopStream={handleStopStream}
+                isStreaming={activeTab.isStreaming}
+                workspace={{ name: workspace?.name, workspacePath: activeProjectPath }}
+                onOpenFile={handleOpenFile}
+              />
+            </div>
+
+            {/* 3. Center-Right Resizer between Chat and File Pane */}
+            {showFilePane && !isFilePaneExpanded && (
+              <ResizeHandle
+                onMouseDown={handleSplitMouseDown}
+                onDoubleClick={() => setFilePaneRatio(50)}
+                isDragging={isDraggingSplit}
+              />
+            )}
+
+            {/* 4. Right Workspace File Viewer Window */}
+            {showFilePane && (
+              <div 
+                style={{ 
+                  width: isFilePaneExpanded ? '100%' : `${filePaneRatio}%` 
+                }}
+                className="flex flex-col overflow-hidden transition-none"
+              >
+                <FileViewerPane
+                  openFiles={openFiles}
+                  activeFile={activeFile}
+                  fileContents={fileContents}
+                  originalContents={originalContents}
+                  liveAiModifiedFile={liveAiModifiedFile}
+                  onSelectFileTab={(file) => setActiveFile(file)}
+                  onCloseFileTab={handleCloseFileTab}
+                  onReloadFile={handleReloadFile}
+                  onSaveFile={handleSaveFile}
+                  isExpanded={isFilePaneExpanded}
+                  onToggleExpand={() => setIsFilePaneExpanded(!isFilePaneExpanded)}
+                  onClosePane={() => setShowFilePane(false)}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 

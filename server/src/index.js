@@ -5,6 +5,7 @@ import systemRoutes from './routes/system.js';
 import workspaceRoutes from './routes/workspace.js';
 import sessionRoutes from './routes/sessions.js';
 import authRoutes from './routes/auth.js';
+import skillsRoutes from './routes/skills.js';
 import { setupWebSocket } from './ws.js';
 
 const app = express();
@@ -15,6 +16,7 @@ app.use(express.json());
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/skills', skillsRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/workspace', workspaceRoutes);
 app.use('/api/sessions', sessionRoutes);

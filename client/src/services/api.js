@@ -144,3 +144,49 @@ export async function triggerCliLogin() {
   }
   return res.json();
 }
+
+export async function getSkills(projectPath = '') {
+  const query = projectPath ? `?projectPath=${encodeURIComponent(projectPath)}` : '';
+  const res = await fetchWithTimeout(`/api/skills${query}`);
+  if (!res.ok) throw new Error('Failed to fetch skills');
+  return res.json();
+}
+
+export async function inspectGithubSkill(url) {
+  const res = await fetchWithTimeout('/api/skills/inspect-github', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  }, 15000);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to inspect GitHub skill repository');
+  }
+  return res.json();
+}
+
+export async function installSkill(skillPayload) {
+  const res = await fetchWithTimeout('/api/skills/install', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(skillPayload),
+  }, 20000);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to install skill');
+  }
+  return res.json();
+}
+
+export async function deleteSkill(skillPath) {
+  const res = await fetchWithTimeout('/api/skills', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ skillPath }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to delete skill');
+  }
+  return res.json();
+}
