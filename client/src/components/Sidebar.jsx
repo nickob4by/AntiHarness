@@ -258,19 +258,6 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Clean Bottom Footer */}
-      <div className="p-2.5 border-t border-border bg-surface/80">
-        <div className="flex items-center justify-between text-[11px] text-slate-300">
-          <span className="flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-indigo-400" />
-            <span>Active Project</span>
-          </span>
-          <span className="font-mono text-[10px] text-indigo-300 font-semibold truncate max-w-[120px]" title={activeProject?.workspacePath}>
-            {activeProject?.name || 'AntiG'}
-          </span>
-        </div>
-      </div>
-
       {/* Visual Folder Picker Modal */}
       <FolderPickerModal
         isOpen={isPickerOpen}

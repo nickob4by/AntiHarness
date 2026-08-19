@@ -59,19 +59,12 @@ export default function StatusBar({
 
   return (
     <footer className="h-7 border-t border-border bg-[#0a0d14] px-3.5 flex items-center justify-between text-[11px] text-slate-300 font-mono select-none">
-      {/* Left: Active Workspace Path & Connection Status */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-1.5 text-slate-200">
-          <FolderGit2 className="w-3.5 h-3.5 text-indigo-400" />
-          <span className="truncate max-w-[280px]" title={workspace?.workspacePath}>
-            {workspace?.workspacePath || 'D:\\AntiG'}
-          </span>
-        </div>
-
-        <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.2 rounded bg-surface border border-border/60">
+      {/* Left: Connection Status Indicator */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface border border-border/60">
           <span className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
           <span className="text-[10px] text-slate-300">
-            {connectionStatus === 'connected' ? 'Connected' : 'Offline'}
+            {connectionStatus === 'connected' ? 'Antigravity Connected' : 'Offline'}
           </span>
         </div>
       </div>
