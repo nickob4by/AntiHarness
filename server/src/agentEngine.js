@@ -54,7 +54,11 @@ export class AgentEngine {
     this.send('AGENT_THOUGHT_START', { timestamp: Date.now() });
 
     // Map UI model names to agy CLI arguments
-    const args = ['-p', prompt, '--dangerously-skip-permissions'];
+    const args = [
+      '-p', prompt,
+      '--add-dir', resolvedWorkspace,
+      '--dangerously-skip-permissions'
+    ];
 
     const normalizedModel = (model || '').toLowerCase();
     if (normalizedModel.includes('thinking')) {
