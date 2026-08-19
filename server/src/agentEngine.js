@@ -3,7 +3,6 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import { recordPromptUsage } from './routes/system.js';
-
 import { getRootWorkspace } from './routes/workspace.js';
 
 // Store active agent stream runners
@@ -50,13 +49,17 @@ export class AgentEngine {
       timestamp: Date.now(),
     });
 
-    // Notify client of initial thinking phase
+    // Notify client of initial thinking phase with initial status
     this.send('AGENT_THOUGHT_START', { timestamp: Date.now() });
+    this.send('AGENT_THOUGHT_CHUNK', { 
+      text: `> Analyzing request for workspace: \`${resolvedWorkspace}\`...\n` 
+    });
 
-    // Map UI model names to agy CLI arguments
+    // Map UI model names to agy CLI arguments with stream-json format
     const args = [
       '-p', prompt,
       '--add-dir', resolvedWorkspace,
+      '--output-format', 'stream-json',
       '--dangerously-skip-permissions'
     ];
 
@@ -76,8 +79,8 @@ export class AgentEngine {
     const agyBin = isWindows && fs.existsSync(defaultAgyWindows) ? defaultAgyWindows : 'agy';
 
     let accumulatedOutput = '';
-    let thoughtBuffer = '';
     let isThinking = true;
+    let lineBuffer = '';
 
     try {
       this.childProcess = spawn(agyBin, args, {
@@ -90,24 +93,86 @@ export class AgentEngine {
 
       this.childProcess.stdout.on('data', (chunk) => {
         if (this.isAborted) return;
-        const text = chunk.toString('utf-8');
+        lineBuffer += chunk.toString('utf-8');
+        const lines = lineBuffer.split('\n');
+        lineBuffer = lines.pop(); // Keep incomplete line in buffer
 
-        // End thinking indicator once real text starts arriving
-        if (isThinking && text.trim().length > 0) {
-          isThinking = false;
-          this.send('AGENT_THOUGHT_END', { timestamp: Date.now() });
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          try {
+            const parsed = JSON.parse(trimmed);
+
+            // 1. Initial tools and environment loaded
+            if (parsed.event === 'init') {
+              const tools = parsed.init?.tools || [];
+              this.send('AGENT_THOUGHT_CHUNK', {
+                text: `> Context initialized: loaded ${tools.length} workspace tools.\n`,
+              });
+            }
+
+            // 2. Step updates: planning, thinking, tool calls, text deltas
+            if (parsed.event === 'step_update' && parsed.step_update) {
+              const step = parsed.step_update;
+
+              if (step.step_type === 'checkpoint') {
+                this.send('AGENT_THOUGHT_CHUNK', {
+                  text: `> Checkpointing step index ${step.step_index}...\n`,
+                });
+              }
+
+              // Tool execution
+              if (step.step_type === 'tool_call' || step.step_type === 'tool_execution') {
+                const toolName = step.tool_name || step.name || 'tool';
+                const toolArgs = step.tool_args || step.args || {};
+                
+                this.send('AGENT_TOOL_START', {
+                  toolId: `tool-${step.step_index}`,
+                  name: toolName,
+                  args: toolArgs,
+                });
+
+                this.send('AGENT_THOUGHT_CHUNK', {
+                  text: `> Executing tool \`${toolName}\`...\n`,
+                });
+              }
+
+              // Agent response text delta
+              if (step.text_delta) {
+                if (isThinking) {
+                  isThinking = false;
+                  this.send('AGENT_THOUGHT_END', { timestamp: Date.now() });
+                }
+                accumulatedOutput += step.text_delta;
+                this.send('AGENT_STREAM_CHUNK', { text: step.text_delta });
+              }
+            }
+
+            // 3. Final Result
+            if (parsed.event === 'result' && parsed.result) {
+              if (parsed.result.response && !accumulatedOutput) {
+                accumulatedOutput = parsed.result.response;
+              }
+            }
+          } catch (e) {
+            // If output was raw text fallback
+            if (trimmed.length > 0) {
+              if (isThinking) {
+                isThinking = false;
+                this.send('AGENT_THOUGHT_END', { timestamp: Date.now() });
+              }
+              accumulatedOutput += trimmed + '\n';
+              this.send('AGENT_STREAM_CHUNK', { text: trimmed + '\n' });
+            }
+          }
         }
-
-        accumulatedOutput += text;
-        this.send('AGENT_STREAM_CHUNK', { text });
       });
 
       this.childProcess.stderr.on('data', (chunk) => {
         if (this.isAborted) return;
         const errText = chunk.toString('utf-8');
-        // If it's diagnostic info or thinking logs
         if (isThinking) {
-          thoughtBuffer += errText;
           this.send('AGENT_THOUGHT_CHUNK', { text: errText });
         }
       });
@@ -123,7 +188,7 @@ export class AgentEngine {
         // Record real usage update
         recordPromptUsage();
 
-        const finalContent = accumulatedOutput.trim() || `(No output returned from agent, exit code ${code})`;
+        const finalContent = accumulatedOutput.trim() || `(Response completed, exit code ${code})`;
 
         this.send('AGENT_STREAM_END', {
           completeResponse: finalContent,
@@ -138,7 +203,6 @@ export class AgentEngine {
         if (this.isAborted) return;
 
         console.error('Failed to spawn agy process:', err);
-        // Fallback response with helpful error
         const errorMsg = `⚠️ **Antigravity CLI Error**: Could not launch \`${agyBin}\`: ${err.message}\n\n*Make sure \`agy\` is installed and accessible on your system PATH.*`;
         this.send('AGENT_STREAM_ERROR', { error: errorMsg });
         activeRuns.delete(this.sessionId);

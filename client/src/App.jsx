@@ -19,6 +19,29 @@ import {
 } from './services/api';
 import { HarnessWebSocket } from './services/websocket';
 
+// Helper to create an initial default tab for a project
+function createInitialTabForProject(projectPath, projectName, tabIndex = 0) {
+  const isMain = tabIndex === 0;
+  return {
+    id: `agent-${Date.now()}-${tabIndex}`,
+    projectPath: projectPath || 'D:\\AntiG',
+    title: isMain ? `${projectName || 'AntiG'} Agent` : `Subagent #${tabIndex}`,
+    messages: [
+      {
+        role: 'assistant',
+        content: `👋 Connected to **${projectName || 'AntiG'}** (\`${projectPath || 'D:\\AntiG'}\`)\n\n- **Project-Isolated Chat**: This conversation is uniquely bound to this project.\n- **Real-Time Thinking**: The AI's live reasoning and planning steps are displayed as it generates.\n- **Direct Commands**: Type commands like \`dir\`, \`git status\`, or \`npm run build\` to execute right inside this directory.`,
+      }
+    ],
+    isStreaming: false,
+    currentStream: {
+      thoughts: '',
+      isThinking: false,
+      tools: [],
+      content: '',
+    },
+  };
+}
+
 export default function App() {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [systemHealth, setSystemHealth] = useState(null);
@@ -55,43 +78,45 @@ export default function App() {
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [selectedSessionTranscript, setSelectedSessionTranscript] = useState(null);
 
-  // Multi-Agent Chat Tabs state
-  const [chatTabs, setChatTabs] = useState([
-    {
-      id: 'agent-main',
-      title: 'Main Agent',
-      messages: [
-        {
-          role: 'assistant',
-          content: 'Welcome to **Antigravity Unified Harness**!\n\n- **Unified Chat-Terminal**: Run shell commands directly ($ git status, npm run build) or ask AI coding questions.\n- **Chat Tabs**: Run multiple agents and subagents concurrently.\n- **Bottom Controls**: Switch models and thinking efforts at the bottom of the chat.\n- **Multi-Window**: Chat on the left and review files on the right.',
-        }
-      ],
-      isStreaming: false,
-      currentStream: {
-        thoughts: '',
-        isThinking: false,
-        tools: [],
-        content: '',
-      },
-    },
-  ]);
-  const [activeTabId, setActiveTabId] = useState('agent-main');
+  // Project-Scoped Multi-Agent Chat Tabs: Map<projectPath, tab[]>
+  const [projectChatTabsMap, setProjectChatTabsMap] = useState({
+    'D:\\AntiG': [createInitialTabForProject('D:\\AntiG', 'AntiG', 0)]
+  });
+  const [activeTabId, setActiveTabId] = useState(() => projectChatTabsMap['D:\\AntiG']?.[0]?.id || 'agent-main');
 
   const wsClientRef = useRef(null);
   const containerRef = useRef(null);
 
+  // Determine current active project path
+  const currentProjectPath = workspace?.workspacePath || 'D:\\AntiG';
+
+  // Get active tabs array for current project
+  const currentProjectTabs = projectChatTabsMap[currentProjectPath] || [
+    createInitialTabForProject(currentProjectPath, workspace?.name || 'Project', 0)
+  ];
+
   // Active chat tab
-  const activeTab = chatTabs.find((t) => t.id === activeTabId) || chatTabs[0];
+  const activeTab = currentProjectTabs.find((t) => t.id === activeTabId) || currentProjectTabs[0];
+
+  // Ensure active tab matches current project when project switches
+  useEffect(() => {
+    if (!currentProjectTabs.some((t) => t.id === activeTabId)) {
+      if (currentProjectTabs.length > 0) {
+        setActiveTabId(currentProjectTabs[0].id);
+      }
+    }
+  }, [currentProjectPath, currentProjectTabs, activeTabId]);
 
   const handleAddChatTab = () => {
     const newId = `agent-${Date.now()}`;
     const newTab = {
       id: newId,
-      title: `Subagent #${chatTabs.length}`,
+      projectPath: currentProjectPath,
+      title: `Subagent #${currentProjectTabs.length}`,
       messages: [
         {
           role: 'assistant',
-          content: `Subagent #${chatTabs.length} is deployed. You can run tasks or shell commands here independently while other agents work concurrently!`,
+          content: `Subagent #${currentProjectTabs.length} is deployed in \`${currentProjectPath}\`. You can run independent tasks or shell commands here while other agents work concurrently!`,
         }
       ],
       isStreaming: false,
@@ -102,14 +127,21 @@ export default function App() {
         content: '',
       },
     };
-    setChatTabs((prev) => [...prev, newTab]);
+
+    setProjectChatTabsMap((prev) => ({
+      ...prev,
+      [currentProjectPath]: [...(prev[currentProjectPath] || []), newTab]
+    }));
     setActiveTabId(newId);
   };
 
   const handleCloseChatTab = (tabId) => {
-    if (chatTabs.length <= 1) return;
-    const filtered = chatTabs.filter((t) => t.id !== tabId);
-    setChatTabs(filtered);
+    if (currentProjectTabs.length <= 1) return;
+    const filtered = currentProjectTabs.filter((t) => t.id !== tabId);
+    setProjectChatTabsMap((prev) => ({
+      ...prev,
+      [currentProjectPath]: filtered,
+    }));
     if (activeTabId === tabId) {
       setActiveTabId(filtered[filtered.length - 1].id);
     }
@@ -208,6 +240,17 @@ export default function App() {
       });
       setExpandedProjects((prev) => ({ ...prev, [res.project.path]: true }));
       await loadProjectFiles(res.project.path);
+
+      // Initialize tabs for the new project if not exists
+      setProjectChatTabsMap((prev) => {
+        if (!prev[res.project.path]) {
+          return {
+            ...prev,
+            [res.project.path]: [createInitialTabForProject(res.project.path, res.project.name, 0)]
+          };
+        }
+        return prev;
+      });
     }
   };
 
@@ -228,6 +271,21 @@ export default function App() {
     if (info) {
       setWorkspace(info);
     }
+
+    // Ensure tabs exist for selected project
+    setProjectChatTabsMap((prev) => {
+      if (!prev[proj.path] || prev[proj.path].length === 0) {
+        const initialTab = createInitialTabForProject(proj.path, proj.name, 0);
+        setActiveTabId(initialTab.id);
+        return {
+          ...prev,
+          [proj.path]: [initialTab]
+        };
+      } else {
+        setActiveTabId(prev[proj.path][0].id);
+        return prev;
+      }
+    });
   };
 
   // Resizing logic
@@ -307,14 +365,18 @@ export default function App() {
         const targetSessionId = data.sessionId || activeTabId;
 
         const updateTab = (updater) => {
-          setChatTabs((prevTabs) =>
-            prevTabs.map((tab) => {
-              if (tab.id === targetSessionId || tab.id === activeTabId) {
-                return updater(tab);
-              }
-              return tab;
-            })
-          );
+          setProjectChatTabsMap((prevMap) => {
+            const nextMap = { ...prevMap };
+            Object.keys(nextMap).forEach((projPath) => {
+              nextMap[projPath] = nextMap[projPath].map((tab) => {
+                if (tab.id === targetSessionId || tab.id === activeTabId) {
+                  return updater(tab);
+                }
+                return tab;
+              });
+            });
+            return nextMap;
+          });
         };
 
         switch (data.type) {
@@ -322,7 +384,12 @@ export default function App() {
             updateTab((tab) => ({
               ...tab,
               isStreaming: true,
-              currentStream: { thoughts: '', isThinking: false, tools: [], content: '' },
+              currentStream: { 
+                thoughts: `> Analyzing request for: \`${data.payload?.workspacePath || currentProjectPath}\`...\n`, 
+                isThinking: true, 
+                tools: [], 
+                content: '' 
+              },
             }));
             break;
 
@@ -338,7 +405,7 @@ export default function App() {
               ...tab,
               currentStream: {
                 ...tab.currentStream,
-                thoughts: tab.currentStream.thoughts + data.payload.text,
+                thoughts: (tab.currentStream.thoughts || '') + data.payload.text,
               },
             }));
             break;
@@ -514,7 +581,7 @@ export default function App() {
       window.removeEventListener('keydown', handleKeyDown);
       ws.disconnect();
     };
-  }, [activeTabId]);
+  }, [activeTabId, currentProjectPath]);
 
   const handleOpenFile = async (file) => {
     if (file.isDirectory) return;
@@ -577,9 +644,12 @@ export default function App() {
 
     // Handle slash commands
     if (text.startsWith('/clear')) {
-      setChatTabs((prev) =>
-        prev.map((t) => (t.id === activeTabId ? { ...t, messages: [] } : t))
-      );
+      setProjectChatTabsMap((prev) => ({
+        ...prev,
+        [currentProjectPath]: (prev[currentProjectPath] || []).map((t) =>
+          t.id === activeTabId ? { ...t, messages: [] } : t
+        ),
+      }));
       return;
     }
 
@@ -594,35 +664,52 @@ export default function App() {
         role: 'assistant',
         content: `### 📊 Real-Time Antigravity CLI Quota (\`agy /usage\`)\n\n| Model Group | Metric | Remaining Left | Used |\n| :--- | :--- | :---: | :---: |\n| **Gemini Models** | 5-Hour Window | **${gemini5h}%** | ${100 - gemini5h}% |\n| **Gemini Models** | Weekly Quota | **${geminiW}%** | ${100 - geminiW}% |\n| **Claude & GPT Models** | 5-Hour Window | **${claude5h}%** | ${100 - claude5h}% |\n| **Claude & GPT Models** | Weekly Quota | **${claudeW}%** | ${100 - claudeW}% |\n\n> [!NOTE]\n> *Synced live with \`agy.exe /usage\` rate limits.*`,
       };
-      setChatTabs((prev) =>
-        prev.map((t) => (t.id === activeTabId ? { ...t, messages: [...t.messages, usageMsg] } : t))
-      );
+      setProjectChatTabsMap((prev) => ({
+        ...prev,
+        [currentProjectPath]: (prev[currentProjectPath] || []).map((t) =>
+          t.id === activeTabId ? { ...t, messages: [...t.messages, usageMsg] } : t
+        ),
+      }));
       return;
     }
 
     if (text.startsWith('/help')) {
       const helpMsg = {
         role: 'assistant',
-        content: `### 💡 Antigravity Unified Harness Help\n\n- **AI Agent Chat**: Type any question, code request, or refactoring prompt.\n- **Direct Shell Commands**: Type \`$ git status\`, \`$ npm run build\`, \`dir\`, \`ls\`, or switch to **Shell** mode to run commands directly.\n- **Slash Commands**:\n  - \`/usage\`: Check live 5-hour and weekly quota rate limits.\n  - \`/clear\`: Clear the active conversation stream.\n  - \`/help\`: View this help message.\n- **Chat Tabs**: Click \`+\` in the top bar to run multiple concurrent subagents.\n- **Shortcuts**:\n  - \`Ctrl+B\`: Toggle Sidebar\n  - \`Ctrl+F\`: Search conversation`,
+        content: `### 💡 Antigravity Unified Harness Help\n\n- **Project Scope**: Currently in \`${currentProjectPath}\`.\n- **AI Agent Chat**: Type any question, code request, or refactoring prompt.\n- **Direct Shell Commands**: Type \`$ git status\`, \`$ npm run build\`, \`dir\`, \`ls\`, or switch to **Shell** mode to run commands directly.\n- **Slash Commands**:\n  - \`/usage\`: Check live 5-hour and weekly quota rate limits.\n  - \`/clear\`: Clear the active conversation stream.\n  - \`/help\`: View this help message.\n- **Chat Tabs**: Click \`+\` in the top bar to run multiple concurrent subagents.\n- **Shortcuts**:\n  - \`Ctrl+B\`: Toggle Sidebar\n  - \`Ctrl+F\`: Search conversation`,
       };
-      setChatTabs((prev) =>
-        prev.map((t) => (t.id === activeTabId ? { ...t, messages: [...t.messages, helpMsg] } : t))
-      );
+      setProjectChatTabsMap((prev) => ({
+        ...prev,
+        [currentProjectPath]: (prev[currentProjectPath] || []).map((t) =>
+          t.id === activeTabId ? { ...t, messages: [...t.messages, helpMsg] } : t
+        ),
+      }));
       return;
     }
 
     const userMsg = { role: 'user', content: text };
-    setChatTabs((prev) =>
-      prev.map((t) =>
+    setProjectChatTabsMap((prev) => ({
+      ...prev,
+      [currentProjectPath]: (prev[currentProjectPath] || []).map((t) =>
         t.id === activeTabId
-          ? { ...t, messages: [...t.messages, userMsg], isStreaming: true }
+          ? { 
+              ...t, 
+              messages: [...t.messages, userMsg], 
+              isStreaming: true,
+              currentStream: {
+                thoughts: `> Analyzing request for: \`${currentProjectPath}\`...\n`,
+                isThinking: true,
+                tools: [],
+                content: '',
+              }
+            }
           : t
-      )
-    );
+      ),
+    }));
 
     wsClientRef.current?.send('RUN_AGENT_PROMPT', {
       prompt: text,
-      workspacePath: workspace?.workspacePath || 'D:\\AntiG',
+      workspacePath: currentProjectPath,
       sessionId: activeTabId,
       model: options.model || 'Gemini 3.7 Flash',
       thinkingEffort: options.thinkingEffort || 'medium',
@@ -641,18 +728,19 @@ export default function App() {
       timestamp: Date.now(),
     };
 
-    setChatTabs((prev) =>
-      prev.map((t) =>
+    setProjectChatTabsMap((prev) => ({
+      ...prev,
+      [currentProjectPath]: (prev[currentProjectPath] || []).map((t) =>
         t.id === activeTabId
           ? { ...t, messages: [...t.messages, termMsg] }
           : t
-      )
-    );
+      ),
+    }));
 
     wsClientRef.current?.send('EXEC_SHELL_COMMAND', {
       commandId,
       command: cmd,
-      workspacePath: workspace?.workspacePath || 'D:\\AntiG',
+      workspacePath: currentProjectPath,
       sessionId: activeTabId,
     });
   };
@@ -704,7 +792,7 @@ export default function App() {
           </>
         )}
 
-        {/* 2. Center Main Canvas with Unified Chat-Terminal Console */}
+        {/* 2. Center Main Canvas with Project-Scoped Unified Chat-Terminal Console */}
         <div 
           style={{ 
             width: showFilePane 
@@ -718,7 +806,7 @@ export default function App() {
           <MainCanvas
             selectedSessionTranscript={selectedSessionTranscript}
             selectedSessionId={selectedSessionId}
-            chatTabs={chatTabs}
+            chatTabs={currentProjectTabs}
             activeTabId={activeTabId}
             onSelectChatTab={(id) => setActiveTabId(id)}
             onAddChatTab={handleAddChatTab}
