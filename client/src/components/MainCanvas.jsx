@@ -60,7 +60,8 @@ export default function MainCanvas({
   onRunShellCommand,
   onStopStream,
   isStreaming,
-  workspace
+  workspace,
+  onOpenFile
 }) {
   const [inputPrompt, setInputPrompt] = useState('');
   const [showHistoryTray, setShowHistoryTray] = useState(false);
@@ -531,7 +532,11 @@ export default function MainCanvas({
                       {msg.tools && msg.tools.length > 0 && (
                         <div className="space-y-1.5 my-2">
                           {msg.tools.map((tool) => (
-                            <ToolCard key={tool.toolId || tool.name} tool={tool} />
+                            <ToolCard 
+                              key={tool.toolId || tool.name} 
+                              tool={tool} 
+                              onOpenFile={onOpenFile} 
+                            />
                           ))}
                         </div>
                       )}
@@ -570,7 +575,11 @@ export default function MainCanvas({
                     {currentStream.tools && currentStream.tools.length > 0 && (
                       <div className="space-y-1.5 my-2">
                         {currentStream.tools.map((tool) => (
-                          <ToolCard key={tool.toolId || tool.name} tool={tool} />
+                          <ToolCard 
+                            key={tool.toolId || tool.name} 
+                            tool={tool} 
+                            onOpenFile={onOpenFile} 
+                          />
                         ))}
                       </div>
                     )}

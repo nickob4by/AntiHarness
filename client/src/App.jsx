@@ -878,6 +878,7 @@ export default function App() {
             onStopStream={handleStopStream}
             isStreaming={activeTab.isStreaming}
             workspace={{ name: workspace?.name, workspacePath: activeProjectPath }}
+            onOpenFile={handleOpenFile}
           />
         </div>
 

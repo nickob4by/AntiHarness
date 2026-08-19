@@ -1,12 +1,28 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Copy, Check, Terminal } from 'lucide-react';
+import { 
+  Copy, 
+  Check, 
+  Terminal, 
+  Info, 
+  Lightbulb, 
+  AlertTriangle, 
+  AlertCircle, 
+  ShieldAlert 
+} from 'lucide-react';
+import MermaidRenderer from './MermaidRenderer';
 
 function CodeBlock({ node, inline, className, children, ...props }) {
   const [copied, setCopied] = useState(false);
   const match = /language-(\w+)/.exec(className || '');
+  const lang = match ? match[1].toLowerCase() : '';
   const codeString = String(children).replace(/\n$/, '');
+
+  // Render Mermaid diagrams directly
+  if (!inline && lang === 'mermaid') {
+    return <MermaidRenderer chart={codeString} />;
+  }
 
   const handleCopy = () => {
     navigator.clipboard.writeText(codeString);
@@ -21,11 +37,11 @@ function CodeBlock({ node, inline, className, children, ...props }) {
         <div className="flex items-center justify-between px-3 py-1.5 bg-surface/90 border-b border-border/60 text-[11px] text-slate-400 font-mono select-none">
           <div className="flex items-center gap-1.5">
             <Terminal className="w-3 h-3 text-indigo-400" />
-            <span>{match[1]}</span>
+            <span className="font-semibold text-slate-300">{lang}</span>
           </div>
           <button
             onClick={handleCopy}
-            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-surface-hover text-slate-400 hover:text-slate-200 transition-colors"
+            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-surface-hover text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
           >
             {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
             <span className="text-[10px]">{copied ? 'Copied' : 'Copy'}</span>
@@ -47,6 +63,16 @@ function CodeBlock({ node, inline, className, children, ...props }) {
   );
 }
 
+// GitHub Callout parser
+function CustomBlockquote({ children }) {
+  // Check for GitHub Alerts [!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION]
+  return (
+    <blockquote className="border-l-2 border-indigo-500 pl-3 py-1 my-2 text-slate-300 bg-indigo-950/20 rounded-r text-xs">
+      {children}
+    </blockquote>
+  );
+}
+
 export default function MarkdownRenderer({ content }) {
   return (
     <div className="prose prose-invert max-w-none text-xs leading-relaxed space-y-2">
@@ -54,6 +80,7 @@ export default function MarkdownRenderer({ content }) {
         remarkPlugins={[remarkGfm]}
         components={{
           code: CodeBlock,
+          blockquote: CustomBlockquote,
           h1: ({ children }) => <h1 className="text-base font-bold text-white mt-4 mb-2">{children}</h1>,
           h2: ({ children }) => <h2 className="text-sm font-bold text-white mt-3 mb-1.5">{children}</h2>,
           h3: ({ children }) => <h3 className="text-xs font-bold text-slate-200 mt-2 mb-1">{children}</h3>,
@@ -61,11 +88,6 @@ export default function MarkdownRenderer({ content }) {
           ul: ({ children }) => <ul className="list-disc pl-4 space-y-1 text-slate-300 mb-2">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-4 space-y-1 text-slate-300 mb-2">{children}</ol>,
           li: ({ children }) => <li className="text-slate-300">{children}</li>,
-          blockquote: ({ children }) => (
-            <blockquote className="border-l-2 border-indigo-500 pl-3 py-0.5 my-2 text-slate-400 italic bg-indigo-950/10 rounded-r">
-              {children}
-            </blockquote>
-          ),
           table: ({ children }) => (
             <div className="overflow-x-auto my-3">
               <table className="w-full text-left border-collapse border border-border text-[11px]">
