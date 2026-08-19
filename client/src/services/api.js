@@ -1,14 +1,3 @@
-export async function getSystemHealth() {
-  const res = await fetch('/api/system/health');
-  if (!res.ok) throw new Error('Failed to fetch system health');
-  return res.json();
-}
-
-export async function getUsage() {
-  const res = await fetch('/api/system/usage');
-  if (!res.ok) throw new Error('Failed to fetch usage metrics');
-  return res.json();
-}
 
 export async function getProjects() {
   const res = await fetch('/api/workspace/projects');
@@ -110,5 +99,48 @@ export async function getSessions() {
 export async function getSessionTranscript(sessionId) {
   const res = await fetch(`/api/sessions/${sessionId}/transcript`);
   if (!res.ok) throw new Error('Failed to fetch session transcript');
+  return res.json();
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function getSystemHealth() {
+  const res = await fetchWithTimeout('/api/system/health');
+  if (!res.ok) throw new Error('Failed to fetch system health');
+  return res.json();
+}
+
+export async function getUsage(force = false) {
+  const query = force ? '?force=true' : '';
+  const res = await fetchWithTimeout(`/api/system/usage${query}`);
+  if (!res.ok) throw new Error('Failed to fetch usage metrics');
+  return res.json();
+}
+
+export async function getAuthStatus(force = false) {
+  const query = force ? '?force=true' : '';
+  const res = await fetchWithTimeout(`/api/auth/status${query}`);
+  if (!res.ok) throw new Error('Failed to fetch auth status');
+  return res.json();
+}
+
+export async function triggerCliLogin() {
+  const res = await fetchWithTimeout('/api/auth/cli-login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  }, 12000);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to trigger CLI login');
+  }
   return res.json();
 }
