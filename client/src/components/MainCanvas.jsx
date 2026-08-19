@@ -241,8 +241,19 @@ export default function MainCanvas({
           </button>
         </div>
 
-        {/* Right: Search & History Summary Toggle */}
+        {/* Right: Active Directory Badge, Search & History Summary Toggle */}
         <div className="flex items-center gap-1.5 shrink-0 pl-2">
+          {/* Active Workspace Directory Badge */}
+          <div 
+            className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded bg-surface/80 border border-border/60 text-slate-300 text-[10px]"
+            title={`Active Working Directory: ${workspace?.workspacePath || 'D:\\AntiG'}`}
+          >
+            <Folder className="w-3 h-3 text-indigo-400" />
+            <span className="truncate max-w-[120px] font-semibold text-slate-200">
+              {workspace?.name || 'AntiG'}
+            </span>
+          </div>
+
           {/* Chat Search Toggle Button */}
           <button
             type="button"

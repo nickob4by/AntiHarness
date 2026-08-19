@@ -521,6 +521,12 @@ export default function App() {
     
     setShowFilePane(true);
     
+    // Auto-switch active project context if this file belongs to a specific project
+    const owningProj = projects.find((p) => file.path.startsWith(p.path));
+    if (owningProj && workspace?.workspacePath !== owningProj.path) {
+      handleSelectProject(owningProj);
+    }
+
     if (!openFiles.some((f) => f.path === file.path)) {
       setOpenFiles((prev) => [...prev, file]);
     }
