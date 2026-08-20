@@ -33,11 +33,11 @@ export function setupWebSocket(server) {
             break;
 
           case 'RUN_AGENT_PROMPT': {
-            const { prompt, workspacePath, sessionId, model, thinkingEffort, mode = 'agent', cavemanMode = true } = data.payload || {};
+            const { prompt, workspacePath, sessionId, model, thinkingEffort, mode = 'agent', cavemanMode = true, history = [] } = data.payload || {};
             if (!prompt) return;
 
             currentAgent = new AgentEngine(ws, sessionId);
-            await currentAgent.runPrompt(prompt, workspacePath, model, { thinkingEffort, mode, cavemanMode });
+            await currentAgent.runPrompt(prompt, workspacePath, model, { thinkingEffort, mode, cavemanMode, history });
             break;
           }
 
@@ -64,7 +64,9 @@ export function setupWebSocket(server) {
 
             const isWindows = process.platform === 'win32';
             const shell = isWindows ? 'powershell.exe' : (process.env.SHELL || 'bash');
-            const shellArgs = isWindows ? ['-NoLogo', '-Command', command] : ['-c', command];
+            const shellArgs = isWindows 
+              ? ['-NoLogo', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command] 
+              : ['-c', command];
             const startTime = Date.now();
 
             const resolvedWorkspace = path.resolve(workspacePath || getRootWorkspace());

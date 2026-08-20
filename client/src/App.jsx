@@ -674,6 +674,24 @@ export default function App() {
             break;
           }
 
+          // Harness UI Awareness: Automatically open workspace file in split-screen viewer
+          case 'HARNESS_OPEN_FILE': {
+            const { filePath } = data.payload || {};
+            if (filePath && typeof filePath === 'string') {
+              let cleanPath = filePath.trim().replace(/^["']|["']$/g, '');
+              let resolved = cleanPath;
+              const root = activeProjectRef.current || '';
+              
+              if (!/^[a-zA-Z]:[\\\/]/.test(cleanPath) && !cleanPath.startsWith('/')) {
+                const sep = root.includes('\\') ? '\\' : '/';
+                resolved = `${root.replace(/[\\\/]+$/, '')}${sep}${cleanPath.replace(/^[\\\/]+/, '')}`;
+              }
+              const fileName = resolved.split(/[\\\/]/).pop() || resolved;
+              handleOpenFile({ path: resolved, name: fileName });
+            }
+            break;
+          }
+
           default:
             break;
         }
@@ -846,6 +864,13 @@ export default function App() {
       };
     });
 
+    const conversationHistory = (activeTab?.messages || [])
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({
+        role: m.role,
+        content: m.content || '',
+      }));
+
     wsClientRef.current?.send('RUN_AGENT_PROMPT', {
       prompt: text,
       workspacePath: activeProjectPath,
@@ -854,6 +879,7 @@ export default function App() {
       thinkingEffort: options.thinkingEffort || 'medium',
       mode: isChatMode ? 'chat' : 'agent',
       cavemanMode: options.cavemanMode ?? true,
+      history: conversationHistory,
     });
   };
 

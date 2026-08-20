@@ -602,7 +602,7 @@ export default function MainCanvas({
                       {msg.role === 'user' ? (
                         <div className="whitespace-pre-wrap font-mono">{msg.content}</div>
                       ) : (
-                        <MarkdownRenderer content={msg.content} />
+                        <MarkdownRenderer content={msg.content} onOpenFile={onOpenFile} />
                       )}
 
                       {/* Response Token Consumption & Duration Footer */}

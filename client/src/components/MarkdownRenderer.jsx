@@ -73,7 +73,7 @@ function CustomBlockquote({ children }) {
   );
 }
 
-export default function MarkdownRenderer({ content }) {
+export default function MarkdownRenderer({ content, onOpenFile }) {
   return (
     <div className="prose prose-invert max-w-none text-xs leading-relaxed space-y-2">
       <ReactMarkdown
@@ -81,6 +81,45 @@ export default function MarkdownRenderer({ content }) {
         components={{
           code: CodeBlock,
           blockquote: CustomBlockquote,
+          a: ({ href, children, ...props }) => {
+            const isFileLink = href && (
+              href.startsWith('file:///') || 
+              href.startsWith('action:open:') ||
+              /\.(html|css|jsx?|tsx?|json|py|md|rs|go|sql|env)$/i.test(href)
+            );
+
+            if (isFileLink && onOpenFile) {
+              const cleanPath = href.replace(/^file:\/\/\/?/, '').replace(/^action:open:/, '');
+              const fileName = cleanPath.split(/[\\\/]/).pop() || cleanPath;
+              return (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onOpenFile({ path: cleanPath, name: fileName });
+                  }}
+                  className="inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300 underline font-mono text-xs cursor-pointer px-1 py-0.2 rounded hover:bg-indigo-950/40"
+                  title={`Open ${fileName} in split-screen workspace`}
+                >
+                  <span>📄</span>
+                  <span>{children}</span>
+                </button>
+              );
+            }
+
+            return (
+              <a 
+                href={href} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="text-indigo-400 hover:text-indigo-300 underline" 
+                {...props}
+              >
+                {children}
+              </a>
+            );
+          },
           h1: ({ children }) => <h1 className="text-base font-bold text-white mt-4 mb-2">{children}</h1>,
           h2: ({ children }) => <h2 className="text-sm font-bold text-white mt-3 mb-1.5">{children}</h2>,
           h3: ({ children }) => <h3 className="text-xs font-bold text-slate-200 mt-2 mb-1">{children}</h3>,
