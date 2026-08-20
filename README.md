@@ -29,42 +29,54 @@
 
 ---
 
-## ⚡ Quick Start & 1-Click Update
+## ⚡ Instant Setup & 1-Click Auto-Updater
 
-### 1. Initial Setup
-```bash
-npm run install:all
+### 🚀 1. Install & Run on Any Computer (1-Line Command)
+To clone, install all dependencies, build, and automatically launch AntiHarness:
+
+#### Windows PowerShell:
+```powershell
+irm https://raw.githubusercontent.com/nickob4by/AntiHarness/main/install.ps1 | iex
 ```
 
-### 2. Start Localhost Harness
+#### Linux / macOS / WSL / Git Bash:
 ```bash
-npm run dev
+curl -fsSL https://raw.githubusercontent.com/nickob4by/AntiHarness/main/install.sh | bash
 ```
 
-- **Web GUI**: `http://localhost:5180`
-- **Backend Gateway**: `http://localhost:3001`
+#### Windows Command Prompt (CMD):
+```cmd
+git clone https://github.com/nickob4by/AntiHarness.git && cd AntiHarness && install.bat
+```
 
 ---
 
-### 🔄 1-Click Update (Sync Latest Version Across Computers)
-If you already have AntiHarness cloned on another computer, you can update everything with a single command:
+### 🔄 2. 1-Click Smart Update (Sync Latest Version)
+If you already have AntiHarness cloned, run the updater to pull the latest changes, update dependencies, build assets, and restart:
 
-#### Via Terminal:
+#### Via Terminal / NPM:
 ```bash
 npm run update
 ```
 
-#### Via Windows Batch / PowerShell:
-```cmd
-.\update.bat
-# or
+#### Via Windows PowerShell / Batch:
+```powershell
 .\update.ps1
+# or
+.\update.bat
 ```
 
 #### Via Linux / macOS:
 ```bash
 ./update.sh
 ```
+
+---
+
+### 🌐 Ports & Access
+- **Web GUI**: `http://localhost:5180`
+- **Backend Gateway**: `http://localhost:3001`
+
 
 ---
 
