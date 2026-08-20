@@ -8,6 +8,7 @@ import {
   FileCode, 
   Sparkles,
   Search,
+  Zap,
   X
 } from 'lucide-react';
 import FileTreeNode from './FileTreeNode';
@@ -29,7 +30,9 @@ export default function Sidebar({
   onRemoveProject,
   onSelectFile,
   selectedFile,
-  onCollapse
+  onCollapse,
+  currentMainView = 'console',
+  onSelectMainView
 }) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -225,6 +228,26 @@ export default function Sidebar({
                   </div>
                 </div>
 
+                {/* Project Token & Consumption Usage Meter */}
+                {proj.usage && proj.usage.totalTokens > 0 && (
+                  <div className="px-2.5 py-1 bg-[#07090f] border-t border-border/30 flex items-center justify-between text-[9px] font-mono text-slate-400">
+                    <div className="flex items-center gap-1 text-slate-200">
+                      <Zap className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                      <span className="font-semibold">
+                        {proj.usage.totalTokens >= 1000
+                          ? `${(proj.usage.totalTokens / 1000).toFixed(1)}k tokens`
+                          : `${proj.usage.totalTokens} tokens`}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-slate-500">
+                      <span>{proj.usage.promptCount} {proj.usage.promptCount === 1 ? 'turn' : 'turns'}</span>
+                      {proj.usage.totalDurationMs > 0 && (
+                        <span>• {(proj.usage.totalDurationMs / 1000).toFixed(0)}s</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Recursive file/folder tree under project */}
                 {isExpanded && (
                   <div className="py-1 bg-[#080b11] border-t border-border/40">
@@ -257,6 +280,29 @@ export default function Sidebar({
           })
         )}
       </div>
+
+      {/* Sidebar Footer: Subtle Skills Hub Button */}
+      {onSelectMainView && (
+        <div className="p-2 border-t border-border/80 bg-surface/40 shrink-0">
+          <button
+            onClick={() => onSelectMainView(currentMainView === 'skills' ? 'console' : 'skills')}
+            title="Skills Hub & Customizations"
+            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs transition-all cursor-pointer ${
+              currentMainView === 'skills'
+                ? 'bg-indigo-600/25 border border-indigo-500/50 text-indigo-200 font-semibold shadow-xs'
+                : 'hover:bg-surface-hover text-slate-300 border border-transparent'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className={`w-3.5 h-3.5 ${currentMainView === 'skills' ? 'text-amber-300' : 'text-amber-400/80'}`} />
+              <span className="font-sans font-medium">Skills Hub</span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-mono bg-black/40 px-1.5 py-0.5 rounded border border-border/50">
+              {currentMainView === 'skills' ? 'Active' : 'Skills'}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Visual Folder Picker Modal */}
       <FolderPickerModal

@@ -61,13 +61,22 @@ export default function MainCanvas({
   onStopStream,
   isStreaming,
   workspace,
-  onOpenFile
+  onOpenFile,
+  onOpenHistoryModal
 }) {
   const [inputPrompt, setInputPrompt] = useState('');
   const [showHistoryTray, setShowHistoryTray] = useState(false);
   const [selectedModel, setSelectedModel] = useState('gemini-3.7-flash');
   const [thinkingEffort, setThinkingEffort] = useState('medium');
-  const [inputMode, setInputMode] = useState('auto'); // 'auto' | 'agent' | 'shell'
+  const [inputMode, setInputMode] = useState('agent'); // 'agent' | 'chat' | 'shell'
+  const [isCavemanMode, setIsCavemanMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('antiharness_caveman_mode');
+      return saved === null ? true : saved === 'true';
+    } catch(e) {
+      return true;
+    }
+  });
   
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
   const [isThinkingDropdownOpen, setIsThinkingDropdownOpen] = useState(false);
@@ -126,20 +135,35 @@ export default function MainCanvas({
     const trimmed = inputPrompt.trim();
     if (!trimmed || isStreaming) return;
 
-    // Check if input is a shell command (starts with $ or >, or in shell mode, or common shell commands)
+    // Check slash command for caveman toggle
+    if (trimmed.startsWith('/caveman')) {
+      const parts = trimmed.split(' ');
+      const arg = parts[1]?.toLowerCase();
+      if (arg === 'off') {
+        setIsCavemanMode(false);
+        try { localStorage.setItem('antiharness_caveman_mode', 'false'); } catch(e) {}
+      } else {
+        setIsCavemanMode(true);
+        try { localStorage.setItem('antiharness_caveman_mode', 'true'); } catch(e) {}
+      }
+    }
+
+    // Check if input is explicitly a shell command
     const isShellCommand = 
       inputMode === 'shell' ||
       trimmed.startsWith('$ ') || 
       trimmed.startsWith('> ') ||
-      trimmed.startsWith('git ') || 
-      trimmed.startsWith('npm ') || 
-      trimmed.startsWith('dir') || 
-      trimmed.startsWith('ls') || 
-      trimmed.startsWith('cd ') ||
-      trimmed.startsWith('node ') ||
-      trimmed.startsWith('python ');
+      (inputMode !== 'chat' && (
+        trimmed.startsWith('git ') || 
+        trimmed.startsWith('npm ') || 
+        trimmed.startsWith('dir') || 
+        trimmed.startsWith('ls') || 
+        trimmed.startsWith('cd ') ||
+        trimmed.startsWith('node ') ||
+        trimmed.startsWith('python ')
+      ));
 
-    if (isShellCommand) {
+    if (isShellCommand && inputMode !== 'chat') {
       const cleanCommand = trimmed.replace(/^[\$>]\s*/, '');
       onRunShellCommand(cleanCommand);
     } else {
@@ -147,6 +171,8 @@ export default function MainCanvas({
       onSendMessage(trimmed, {
         model: activeModelObj?.name || 'Gemini 3.7 Flash',
         thinkingEffort,
+        mode: inputMode === 'chat' ? 'chat' : 'agent',
+        cavemanMode: isCavemanMode,
       });
     }
 
@@ -288,7 +314,7 @@ export default function MainCanvas({
             <Search className="w-3 h-3" />
           </button>
 
-          {/* History Summary Button */}
+          {/* History Summary Toggle */}
           <button
             type="button"
             onClick={() => setShowHistoryTray(!showHistoryTray)}
@@ -300,9 +326,22 @@ export default function MainCanvas({
             }`}
           >
             <Clock className="w-3 h-3 text-indigo-400" />
-            <span>History ({summary?.totalSteps || 0})</span>
+            <span>Summary ({summary?.totalSteps || 0})</span>
             {showHistoryTray ? <ChevronUp className="w-3 h-3 ml-0.5" /> : <ChevronDown className="w-3 h-3 ml-0.5" />}
           </button>
+
+          {/* Past Sessions Archive Studio Button */}
+          {onOpenHistoryModal && (
+            <button
+              type="button"
+              onClick={onOpenHistoryModal}
+              title="Open Session Memory & Past Transcripts Archive"
+              className="flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-mono bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 hover:text-white transition-all cursor-pointer shadow-xs"
+            >
+              <History className="w-3 h-3" />
+              <span>Archives</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -512,8 +551,12 @@ export default function MainCanvas({
                     } ${isCurrentActiveMatch ? 'ring-2 ring-indigo-500 rounded-2xl p-1 bg-indigo-500/5' : ''}`}
                   >
                     {msg.role !== 'user' && (
-                      <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0 text-indigo-400 mt-0.5 shadow-sm">
-                        <Bot className="w-4 h-4" />
+                      <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 shadow-sm ${
+                        msg.mode === 'chat'
+                          ? 'bg-purple-600/20 border-purple-500/30 text-purple-400'
+                          : 'bg-indigo-600/20 border-indigo-500/30 text-indigo-400'
+                      }`}>
+                        {msg.mode === 'chat' ? <Sparkles className="w-4 h-4 text-amber-300" /> : <Bot className="w-4 h-4" />}
                       </div>
                     )}
 
@@ -524,6 +567,19 @@ export default function MainCanvas({
                           : 'bg-surface/90 border border-border text-slate-200 rounded-bl-none shadow-sm flex-1'
                       }`}
                     >
+                      {/* Mode Badge for assistant message */}
+                      {msg.role !== 'user' && (
+                        <div className="flex items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-border/40 text-[10px]">
+                          <span className={`px-1.5 py-0.2 rounded font-mono font-medium border ${
+                            msg.mode === 'chat'
+                              ? 'bg-purple-950/40 border-purple-500/40 text-purple-300'
+                              : 'bg-indigo-950/40 border-indigo-500/40 text-indigo-300'
+                          }`}>
+                            {msg.mode === 'chat' ? '💬 Gemini Chat Pro' : '🤖 Antigravity Agent'}
+                          </span>
+                        </div>
+                      )}
+
                       {/* Thought process */}
                       {msg.thoughts && (
                         <ThinkingBox thoughts={msg.thoughts} isThinking={false} />
@@ -548,6 +604,33 @@ export default function MainCanvas({
                       ) : (
                         <MarkdownRenderer content={msg.content} />
                       )}
+
+                      {/* Response Token Consumption & Duration Footer */}
+                      {msg.role === 'assistant' && msg.tokenUsage && (
+                        <div className="mt-2.5 pt-2 border-t border-border/40 flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono text-slate-400 select-none">
+                          <div className="flex items-center gap-2">
+                            <span className="flex items-center gap-1 text-indigo-300 font-semibold bg-indigo-950/40 px-1.5 py-0.5 rounded border border-indigo-500/30">
+                              <Zap className="w-2.5 h-2.5 text-amber-400" />
+                              <span>{msg.tokenUsage.totalTokens?.toLocaleString()} tokens</span>
+                            </span>
+                            <span className="text-slate-500">
+                              (in: {msg.tokenUsage.inputTokens?.toLocaleString()}, out: {msg.tokenUsage.outputTokens?.toLocaleString()})
+                            </span>
+                            {msg.tokenUsage.durationMs > 0 && (
+                              <span className="text-slate-500">
+                                • {(msg.tokenUsage.durationMs / 1000).toFixed(1)}s
+                              </span>
+                            )}
+                          </div>
+
+                          {msg.tokenUsage.cavemanActive && (
+                            <span className="flex items-center gap-1 text-amber-300 bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-500/30 font-semibold text-[9px]">
+                              <span>🪨 Caveman</span>
+                              <span className="text-emerald-400 font-bold">(-70% output tokens)</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {msg.role === 'user' && (
@@ -562,11 +645,30 @@ export default function MainCanvas({
               {/* Active Live Stream Message */}
               {isStreaming && currentStream && (
                 <div className="flex gap-3 w-full justify-start animate-fadeIn">
-                  <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0 text-indigo-400 mt-0.5">
-                    <Bot className="w-4 h-4 animate-pulse" />
+                  <div className={`w-7 h-7 rounded-lg border flex items-center justify-center shrink-0 mt-0.5 ${
+                    currentStream.mode === 'chat'
+                      ? 'bg-purple-600/20 border-purple-500/30 text-purple-400'
+                      : 'bg-indigo-600/20 border-indigo-500/30 text-indigo-400'
+                  }`}>
+                    {currentStream.mode === 'chat' ? (
+                      <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+                    ) : (
+                      <Bot className="w-4 h-4 animate-pulse" />
+                    )}
                   </div>
 
                   <div className="p-3.5 rounded-xl text-xs leading-relaxed bg-surface/90 border border-indigo-500/30 text-slate-200 rounded-bl-none shadow-md flex-1 max-w-[85%]">
+                    {/* Live Stream Mode Header */}
+                    <div className="flex items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-border/40 text-[10px]">
+                      <span className={`px-1.5 py-0.2 rounded font-mono font-medium border ${
+                        currentStream.mode === 'chat'
+                          ? 'bg-purple-950/40 border-purple-500/40 text-purple-300'
+                          : 'bg-indigo-950/40 border-indigo-500/40 text-indigo-300'
+                      }`}>
+                        {currentStream.mode === 'chat' ? '💬 Gemini Chat Stream' : '🤖 Antigravity Agent'}
+                      </span>
+                    </div>
+
                     {/* Live Thinking */}
                     {(currentStream.thoughts || currentStream.isThinking) && (
                       <ThinkingBox thoughts={currentStream.thoughts} isThinking={currentStream.isThinking} />
@@ -617,8 +719,10 @@ export default function MainCanvas({
             rows={1}
             placeholder={
               inputMode === 'shell'
-                ? "Enter shell command... (e.g. npm run build, git status, dir)"
-                : "Message Antigravity or type shell command ($ git status, npm test)..."
+                ? "Enter terminal command... (e.g. npm run build, git status, dir)"
+                : inputMode === 'chat'
+                ? "Ask Gemini anything... (Conversational Q&A, code explanations, algorithms, fast chat)"
+                : "Instruct Antigravity Agent (e.g. build feature, refactor code, fix bug)..."
             }
             className="w-full bg-transparent border-0 text-xs text-white placeholder-slate-500 focus:outline-none resize-none font-mono px-1 py-0.5 leading-relaxed max-h-32"
           />
@@ -627,38 +731,47 @@ export default function MainCanvas({
           <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1 border-t border-border/40 text-[11px]">
             {/* Left Controls: Mode + Model + Thinking */}
             <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-              {/* Input Mode Toggle: Auto / Agent / Shell */}
-              <div className="flex items-center bg-surface border border-border/70 rounded p-0.5 text-[10px]">
-                <button
-                  type="button"
-                  onClick={() => setInputMode('auto')}
-                  className={`px-1.5 py-0.5 rounded transition-colors ${
-                    inputMode === 'auto' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
-                  }`}
-                  title="Auto-detect AI prompt or shell command"
-                >
-                  Auto
-                </button>
+              {/* Input Mode Toggle: Agent / Gemini Chat / Shell */}
+              <div className="flex items-center bg-[#090d16] border border-border/80 rounded-lg p-0.5 text-[10px]">
                 <button
                   type="button"
                   onClick={() => setInputMode('agent')}
-                  className={`px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 ${
-                    inputMode === 'agent' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
+                  className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 cursor-pointer ${
+                    inputMode === 'agent' 
+                      ? 'bg-indigo-600 text-white font-semibold shadow-xs' 
+                      : 'text-slate-400 hover:text-white'
                   }`}
-                  title="AI Agent Chat Mode"
+                  title="Antigravity Autonomous Coding Agent (Full Workspace & Tools)"
                 >
-                  <Bot className="w-2.5 h-2.5" />
+                  <Bot className="w-3 h-3 text-indigo-300" />
                   <span>Agent</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setInputMode('chat')}
+                  className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 cursor-pointer ${
+                    inputMode === 'chat' 
+                      ? 'bg-purple-600 text-white font-semibold shadow-xs' 
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                  title="Gemini Direct Chat (Fast Q&A, brainstorming, explanations)"
+                >
+                  <Sparkles className="w-3 h-3 text-amber-300" />
+                  <span>Gemini Chat</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setInputMode('shell')}
-                  className={`px-1.5 py-0.5 rounded transition-colors flex items-center gap-0.5 ${
-                    inputMode === 'shell' ? 'bg-indigo-600 text-white font-semibold' : 'text-slate-400 hover:text-white'
+                  className={`px-2 py-0.5 rounded transition-all flex items-center gap-1 cursor-pointer ${
+                    inputMode === 'shell' 
+                      ? 'bg-slate-700 text-white font-semibold shadow-xs' 
+                      : 'text-slate-400 hover:text-white'
                   }`}
-                  title="Terminal Shell Mode"
+                  title="Direct Terminal Shell Command"
                 >
-                  <Terminal className="w-2.5 h-2.5" />
+                  <Terminal className="w-3 h-3 text-slate-300" />
                   <span>Shell</span>
                 </button>
               </div>
@@ -771,6 +884,27 @@ export default function MainCanvas({
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* Caveman Token Output Optimization Switch */}
+              {inputMode !== 'shell' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !isCavemanMode;
+                    setIsCavemanMode(next);
+                    try { localStorage.setItem('antiharness_caveman_mode', String(next)); } catch(e) {}
+                  }}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded border transition-all text-[10px] cursor-pointer ${
+                    isCavemanMode
+                      ? 'bg-amber-950/40 border-amber-500/50 text-amber-300 font-semibold shadow-xs'
+                      : 'bg-surface border-border/70 text-slate-400 hover:text-slate-200'
+                  }`}
+                  title={isCavemanMode ? "Caveman Token Compression ACTIVE (Cuts 65-85% output token fluff)" : "Caveman Output Compression OFF"}
+                >
+                  <span>🪨 Caveman {isCavemanMode ? 'ON' : 'OFF'}</span>
+                  {isCavemanMode && <span className="text-[9px] text-amber-400 font-bold">(-70%)</span>}
+                </button>
               )}
             </div>
 

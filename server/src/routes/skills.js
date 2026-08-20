@@ -4,9 +4,101 @@ import path from 'path';
 import fs from 'fs';
 import { exec } from 'child_process';
 import util from 'util';
+import { ensureGlobalSkills } from '../services/defaultSkills.js';
 
 const execPromise = util.promisify(exec);
 const router = express.Router();
+
+// Ensure default global skills are initialized
+ensureGlobalSkills();
+
+// Persistent Auto-Inject configuration
+function getAutoInjectConfigPath() {
+  const dir = path.join(os.homedir(), '.gemini', 'antigravity');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, 'auto_inject_skills.json');
+}
+
+export function getAutoInjectedSlugs() {
+  try {
+    const p = getAutoInjectConfigPath();
+    if (fs.existsSync(p)) {
+      const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      if (Array.isArray(data)) return data;
+    }
+  } catch (e) {}
+  return ['codebase-cartographer', 'surgical-patcher', 'token-saver'];
+}
+
+export function setAutoInjectedSlugs(slugs) {
+  try {
+    const p = getAutoInjectConfigPath();
+    fs.writeFileSync(p, JSON.stringify(slugs, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Failed to save auto-injected skills:', e);
+  }
+}
+
+// Categorize skill based on usage domain
+export function categorizeSkill(name = '', slug = '', description = '', triggers = []) {
+  const text = `${name} ${slug} ${description} ${(triggers || []).join(' ')}`.toLowerCase();
+  
+  if (
+    text.includes('token') || 
+    text.includes('quota') || 
+    text.includes('rate limit') || 
+    text.includes('surgical') || 
+    text.includes('patch') || 
+    text.includes('cartograph') || 
+    text.includes('compress') ||
+    text.includes('optimization')
+  ) {
+    return 'Token & Optimization';
+  }
+
+  if (
+    text.includes('refactor') || 
+    text.includes('debug') || 
+    text.includes('lint') || 
+    text.includes('test') || 
+    text.includes('clean code') || 
+    text.includes('review') ||
+    text.includes('security')
+  ) {
+    return 'Coding & Refactoring';
+  }
+
+  if (
+    text.includes('architecture') || 
+    text.includes('workflow') || 
+    text.includes('git') || 
+    text.includes('ci') || 
+    text.includes('docker') || 
+    text.includes('deploy') ||
+    text.includes('guide') ||
+    text.includes('customization')
+  ) {
+    return 'Architecture & Workflow';
+  }
+
+  if (
+    text.includes('react') || 
+    text.includes('vue') || 
+    text.includes('node') || 
+    text.includes('express') || 
+    text.includes('tailwind') || 
+    text.includes('python') || 
+    text.includes('api') || 
+    text.includes('database') || 
+    text.includes('sql') ||
+    text.includes('frontend') ||
+    text.includes('backend')
+  ) {
+    return 'Framework & Stack';
+  }
+
+  return 'General & Automation';
+}
 
 // Helper to parse YAML frontmatter and markdown body from SKILL.md
 function parseSkillFile(filePath, skillDir, scope) {
@@ -56,12 +148,16 @@ function parseSkillFile(filePath, skillDir, scope) {
       whenMatches.forEach(m => triggers.push(m.replace(/^(?:Use when|When to use|Trigger when|Activate when)[:\s]*/i, '').trim()));
     }
 
+    const slug = path.basename(skillDir);
+    const category = categorizeSkill(name, slug, description, triggers);
+
     return {
-      id: `${scope}-${path.basename(skillDir)}`,
+      id: `${scope}-${slug}`,
       name,
-      slug: path.basename(skillDir),
+      slug,
       description: description || 'Antigravity specialized skill instructions and tools.',
       scope, // 'project' | 'global' | 'builtin'
+      category,
       path: skillDir,
       skillMdPath: filePath,
       files,
@@ -97,20 +193,26 @@ function scanSkillsDirectory(baseDir, scope) {
   return skills;
 }
 
-// GET /api/skills - List all installed skills (Project, Global, Builtin)
+// GET /api/skills - List all installed skills (Project, Global, Builtin) with categories & auto-inject status
 router.get('/', (req, res) => {
   const projectPath = req.query.projectPath || '';
   const allSkills = [];
+  const autoInjectedSlugs = getAutoInjectedSlugs();
 
   // 1. Project-level skills
+  const projectSkillSlugs = new Set();
   if (projectPath && fs.existsSync(projectPath)) {
     const projGeminiSkills = path.join(projectPath, '.gemini', 'skills');
     const projAgySkills = path.join(projectPath, '.agy', 'skills');
     const projSkills = path.join(projectPath, 'skills');
 
-    allSkills.push(...scanSkillsDirectory(projGeminiSkills, 'project'));
-    allSkills.push(...scanSkillsDirectory(projAgySkills, 'project'));
-    allSkills.push(...scanSkillsDirectory(projSkills, 'project'));
+    const projectList = [
+      ...scanSkillsDirectory(projGeminiSkills, 'project'),
+      ...scanSkillsDirectory(projAgySkills, 'project'),
+      ...scanSkillsDirectory(projSkills, 'project')
+    ];
+    projectList.forEach(s => projectSkillSlugs.add(s.slug.toLowerCase()));
+    allSkills.push(...projectList);
   }
 
   // 2. Global user skills
@@ -124,17 +226,39 @@ router.get('/', (req, res) => {
   const builtinSkills = path.join(homeDir, '.gemini', 'antigravity-cli', 'builtin', 'skills');
   allSkills.push(...scanSkillsDirectory(builtinSkills, 'builtin'));
 
-  // Deduplicate by path
+  // Deduplicate by scope + slug so no scope tab ever contains duplicates
+  const seenScopeSlug = new Set();
   const seenPaths = new Set();
   const uniqueSkills = allSkills.filter(s => {
-    if (seenPaths.has(s.path)) return false;
+    const slugKey = `${s.scope}:${(s.slug || s.name).toLowerCase().trim()}`;
+    if (seenScopeSlug.has(slugKey) || seenPaths.has(s.path)) {
+      return false;
+    }
+    seenScopeSlug.add(slugKey);
     seenPaths.add(s.path);
     return true;
+  }).map(s => {
+    const isAutoInject = autoInjectedSlugs.includes(s.slug);
+    const isUsedInProject = s.scope === 'project' || isAutoInject || projectSkillSlugs.has(s.slug.toLowerCase());
+    return {
+      ...s,
+      isAutoInject,
+      isUsedInProject
+    };
   });
 
   res.json({
     skills: uniqueSkills,
     count: uniqueSkills.length,
+    autoInjectedSlugs,
+    categories: [
+      'All Categories',
+      'Token & Optimization',
+      'Coding & Refactoring',
+      'Architecture & Workflow',
+      'Framework & Stack',
+      'General & Automation'
+    ],
     timestamp: new Date().toISOString()
   });
 });
@@ -229,12 +353,32 @@ router.post('/inspect-github', async (req, res) => {
         if (p1) skillDesc = p1.replace(/^[#*-]\s*/, '').trim().substring(0, 200);
       }
 
+      // Clean markdown links, HTML tags, and non-alphanumeric noise from skillName and skillDesc
+      skillName = skillName
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [title](url) -> title
+        .replace(/<[^>]*>/g, '')                 // strip HTML
+        .replace(/^["']|["']$/g, '')
+        .trim();
+
+      skillDesc = skillDesc
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/<[^>]*>/g, '')
+        .replace(/^["']|["']$/g, '')
+        .trim();
+
       // Extract triggers from markdown body
       const whenMatches = skillContent.match(/(?:Use when|When to use|Trigger when|Activate when)[:\s]+([^\n.]+)/gi);
       if (whenMatches) {
         triggers = whenMatches.map(m => m.replace(/^(?:Use when|When to use|Trigger when|Activate when)[:\s]*/i, '').trim());
       }
     }
+
+    const cleanSlug = (skillName || repo)
+      .toLowerCase()
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/https?:\/\/[^\s]+/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
 
     // Return structured AI Summary
     res.json({
@@ -247,10 +391,10 @@ router.post('/inspect-github', async (req, res) => {
         url: cleanUrl,
       },
       skill: {
-        name: skillName,
-        slug: skillName.toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
-        description: skillDesc,
-        summary: `This skill equips your Antigravity agent with specialized instructions, best practices, and automation rules for **${skillName}**. It allows the agent to intelligently execute workflows related to ${skillDesc.toLowerCase()}.`,
+        name: skillName || repo,
+        slug: cleanSlug || repo.toLowerCase(),
+        description: skillDesc || `Antigravity skill from ${owner}/${repo}`,
+        summary: `This skill equips your Antigravity agent with specialized instructions, best practices, and automation rules for **${skillName || repo}**.`,
         triggers,
         toolsUsed: tools,
         files: filesList,
@@ -324,11 +468,69 @@ Follow standard Antigravity execution instructions for ${skillData.name}.
   }
 });
 
-// DELETE /api/skills - Remove a skill
+// POST /api/skills/auto-inject/toggle - Toggle auto-injection on session start
+router.post('/auto-inject/toggle', (req, res) => {
+  const { slug, enabled } = req.body;
+  if (!slug) return res.status(400).json({ error: 'slug is required' });
+
+  const current = getAutoInjectedSlugs();
+  let updated;
+  if (enabled !== undefined) {
+    if (enabled) {
+      updated = Array.from(new Set([...current, slug]));
+    } else {
+      updated = current.filter(s => s !== slug);
+    }
+  } else {
+    if (current.includes(slug)) {
+      updated = current.filter(s => s !== slug);
+    } else {
+      updated = [...current, slug];
+    }
+  }
+  setAutoInjectedSlugs(updated);
+  res.json({ success: true, autoInjectedSlugs: updated });
+});
+
+// POST /api/skills/copy-to-project - Copy a global skill to local project .gemini/skills
+router.post('/copy-to-project', (req, res) => {
+  const { slug, projectPath } = req.body;
+  if (!slug || !projectPath) {
+    return res.status(400).json({ error: 'slug and projectPath are required' });
+  }
+
+  const homeDir = os.homedir();
+  const sourceCandidates = [
+    path.join(homeDir, '.gemini', 'skills', slug),
+    path.join(homeDir, '.gemini', 'antigravity-cli', 'builtin', 'skills', slug),
+    path.join(homeDir, '.agy', 'skills', slug)
+  ];
+
+  const sourceDir = sourceCandidates.find(d => fs.existsSync(path.join(d, 'SKILL.md')));
+  if (!sourceDir) {
+    return res.status(404).json({ error: `Skill "${slug}" not found in global directory.` });
+  }
+
+  try {
+    const targetDir = path.join(projectPath, '.gemini', 'skills', slug);
+    fs.mkdirSync(targetDir, { recursive: true });
+    fs.cpSync(sourceDir, targetDir, { recursive: true });
+    res.json({ success: true, message: `Skill "${slug}" copied to project .gemini/skills.` });
+  } catch (err) {
+    res.status(500).json({ error: `Failed to copy skill to project: ${err.message}` });
+  }
+});
+
+// DELETE /api/skills - Remove a skill permanently
 router.delete('/', (req, res) => {
-  const { skillPath } = req.body;
+  let { skillPath, slug, projectPath } = req.body;
+
+  if (!skillPath && slug && projectPath) {
+    skillPath = path.join(projectPath, '.gemini', 'skills', slug);
+  }
+
   if (!skillPath || !fs.existsSync(skillPath)) {
-    return res.status(400).json({ error: 'Invalid skill path' });
+    return res.status(400).json({ error: 'Invalid or non-existent skill path' });
   }
 
   // Prevent deleting builtin skills
@@ -337,9 +539,22 @@ router.delete('/', (req, res) => {
   }
 
   try {
+    // 1. Remove skill folder on disk
     fs.rmSync(skillPath, { recursive: true, force: true });
-    res.json({ success: true, message: 'Skill removed successfully.' });
+
+    // 2. Also remove from auto-inject configuration if present
+    const skillSlug = slug || path.basename(skillPath);
+    if (skillSlug) {
+      const current = getAutoInjectedSlugs();
+      const updated = current.filter(s => s.toLowerCase() !== skillSlug.toLowerCase());
+      if (updated.length !== current.length) {
+        setAutoInjectedSlugs(updated);
+      }
+    }
+
+    res.json({ success: true, message: `Skill removed successfully from ${skillPath}.` });
   } catch (err) {
+    console.error('Failed to remove skill:', err);
     res.status(500).json({ error: `Failed to remove skill: ${err.message}` });
   }
 });

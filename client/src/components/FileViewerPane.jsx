@@ -315,6 +315,46 @@ export default function FileViewerPane({
         </div>
       )}
 
+      {/* Interactive AI Code Modification Review Banner */}
+      {hasDiffWithOriginal && (
+        <div className="px-4 py-1.5 bg-indigo-950/70 border-b border-indigo-500/40 flex items-center justify-between text-xs animate-fadeIn select-none">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+            <span className="text-indigo-200 font-medium text-[11px]">
+              AI Modified <code className="text-white font-mono bg-indigo-900/60 px-1 rounded">{activeFile?.name}</code>
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setViewMode(viewMode === 'diff' ? 'editor' : 'diff')}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-all cursor-pointer ${
+                viewMode === 'diff' 
+                  ? 'bg-indigo-600 text-white shadow-sm' 
+                  : 'bg-surface hover:bg-surface-hover text-slate-300 border border-border/80'
+              }`}
+            >
+              {viewMode === 'diff' ? 'Show Editor' : 'Inspect Diff'}
+            </button>
+            <button
+              onClick={handleAcceptDiff}
+              className="px-2.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-semibold flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+              title="Keep AI changes and save file"
+            >
+              <CheckCircle2 className="w-3 h-3" />
+              <span>Keep Changes</span>
+            </button>
+            <button
+              onClick={handleRevertToOriginal}
+              className="px-2 py-0.5 rounded bg-surface hover:bg-rose-950/40 border border-border/80 hover:border-rose-500/40 text-rose-300 text-[10px] flex items-center gap-1 transition-all cursor-pointer"
+              title="Revert back to original before AI edits"
+            >
+              <Undo2 className="w-3 h-3" />
+              <span>Revert</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* View Content Area: Monaco Edit | Monaco Diff | Live Preview */}
       <div className="flex-1 overflow-hidden relative">
         {viewMode === 'preview' ? (

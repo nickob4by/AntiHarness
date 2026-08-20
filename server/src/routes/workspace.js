@@ -2,7 +2,8 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { generateCodebaseGraph } from '../services/graphEngine.js';
+import { ensureGlobalSkills } from '../services/defaultSkills.js';
+import { getProjectUsage, getAllProjectUsage } from '../services/projectUsage.js';
 
 const router = express.Router();
 
@@ -16,6 +17,9 @@ export function getRootWorkspace() {
 }
 
 const defaultRoot = getRootWorkspace();
+
+// Ensure global skills exist in ~/.gemini/skills
+ensureGlobalSkills();
 
 // Track opened projects
 const registeredProjects = new Set([
@@ -100,7 +104,7 @@ router.get('/browse', (req, res) => {
   }
 });
 
-// List all registered projects
+// List all registered projects with token usage metrics
 router.get('/projects', (req, res) => {
   const projects = Array.from(registeredProjects).map((projPath) => {
     let itemCount = 0;
@@ -110,14 +114,23 @@ router.get('/projects', (req, res) => {
       }
     } catch (e) {}
 
+    const usage = getProjectUsage(projPath);
+
     return {
       name: path.basename(projPath) || projPath,
       path: projPath,
       itemCount,
+      usage,
     };
   });
 
   res.json({ projects });
+});
+
+// GET /api/workspace/projects/usage - Get all project token usage meters
+router.get('/projects/usage', (req, res) => {
+  const allUsage = getAllProjectUsage();
+  res.json({ usage: allUsage });
 });
 
 // Add a new project folder to sidebar
@@ -320,17 +333,6 @@ router.delete('/file', (req, res) => {
     }
 
     res.json({ success: true, path: resolved });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get Codebase Cartography & Dependency Graph
-router.get('/graph', async (req, res) => {
-  const targetPath = req.query.path || defaultRoot;
-  try {
-    const graphData = await generateCodebaseGraph(targetPath);
-    res.json(graphData);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

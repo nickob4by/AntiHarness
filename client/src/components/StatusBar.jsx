@@ -10,7 +10,8 @@ import {
 export default function StatusBar({ 
   connectionStatus, 
   workspace, 
-  usageData
+  usageData,
+  projectUsage
 }) {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showUsed, setShowUsed] = useState(false);
@@ -59,7 +60,7 @@ export default function StatusBar({
 
   return (
     <footer className="h-7 border-t border-border bg-[#0a0d14] px-3.5 flex items-center justify-between text-[11px] text-slate-300 font-mono select-none">
-      {/* Left: Connection Status Indicator */}
+      {/* Left: Connection Status & Active Project Token Meter */}
       <div className="flex items-center gap-2">
         <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface border border-border/60">
           <span className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
@@ -67,6 +68,19 @@ export default function StatusBar({
             {connectionStatus === 'connected' ? 'Antigravity Connected' : 'Offline'}
           </span>
         </div>
+
+        {/* Active Project Cumulative Token Count */}
+        {projectUsage && projectUsage.totalTokens > 0 && (
+          <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded bg-indigo-950/40 border border-indigo-500/30 text-[10px] text-indigo-300">
+            <Zap className="w-2.5 h-2.5 text-amber-400" />
+            <span className="font-medium text-slate-200">
+              {projectUsage.totalTokens >= 1000
+                ? `${(projectUsage.totalTokens / 1000).toFixed(1)}k project tokens`
+                : `${projectUsage.totalTokens} project tokens`}
+            </span>
+            <span className="text-slate-500 font-normal">({projectUsage.promptCount} {projectUsage.promptCount === 1 ? 'turn' : 'turns'})</span>
+          </div>
+        )}
       </div>
 
       {/* Right: Exact Quota Percentage Format & Live Clock */}

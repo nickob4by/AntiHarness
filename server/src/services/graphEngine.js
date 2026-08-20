@@ -29,7 +29,7 @@ const IGNORED_EXTENSIONS = new Set([
 ]);
 
 // Identify primary file role
-function getFileRole(filePath, fileName) {
+function getFileRole(fileName) {
   const lower = fileName.toLowerCase();
   const ext = path.extname(fileName).toLowerCase();
 
@@ -37,7 +37,7 @@ function getFileRole(filePath, fileName) {
     return 'config';
   }
   if (lower.includes('test') || lower.includes('spec')) return 'test';
-  if (['index.html', 'main.jsx', 'index.js', 'app.jsx', 'app.js', 'main.py', 'server.js'].includes(lower)) {
+  if (['index.html', 'main.jsx', 'index.js', 'app.jsx', 'app.js', 'main.py', 'server.js', 'index.ts', 'main.go', 'main.rs'].includes(lower)) {
     return 'entry';
   }
   if (['.jsx', '.tsx', '.vue', '.svelte', '.html', '.css', '.scss'].includes(ext)) {
@@ -52,36 +52,10 @@ function getFileRole(filePath, fileName) {
   return 'file';
 }
 
-// Extract imports from JS/TS/Python code
-function extractImports(filePath, fileContent) {
-  const imports = [];
-  const ext = path.extname(filePath).toLowerCase();
-
-  if (['.js', '.jsx', '.ts', '.tsx', '.mjs'].includes(ext)) {
-    const importRegex = /(?:import\s+(?:[\w*\s{},]*)\s+from\s+['"]([^'"]+)['"])|(?:require\(['"]([^'"]+)['"]\))/g;
-    let match;
-    while ((match = importRegex.exec(fileContent)) !== null) {
-      const imp = match[1] || match[2];
-      if (imp && (imp.startsWith('.') || imp.startsWith('/'))) {
-        imports.push(imp);
-      }
-    }
-  } else if (['.py'].includes(ext)) {
-    const pyImportRegex = /(?:from\s+([.\w]+)\s+import)|(?:import\s+([.\w]+))/g;
-    let match;
-    while ((match = pyImportRegex.exec(fileContent)) !== null) {
-      const imp = match[1] || match[2];
-      if (imp) imports.push(imp);
-    }
-  }
-
-  return [...new Set(imports)].slice(0, 8); // top 8 dependencies per file
-}
-
 /**
- * Scan workspace directory and generate full project cartography & dependency graph
+ * Scan workspace directory and generate a compact, token-saving workspace map and file tree
  */
-export async function generateCodebaseGraph(workspaceRoot, maxDepth = 6) {
+export async function generateWorkspaceMap(workspaceRoot, maxDepth = 6) {
   const resolvedRoot = path.resolve(workspaceRoot);
   if (!fs.existsSync(resolvedRoot)) {
     throw new Error(`Workspace path does not exist: ${resolvedRoot}`);
@@ -89,7 +63,6 @@ export async function generateCodebaseGraph(workspaceRoot, maxDepth = 6) {
 
   const allFiles = [];
   const directoryTree = { name: path.basename(resolvedRoot), path: resolvedRoot, type: 'directory', children: [] };
-  const dependencies = [];
   const techStack = new Set();
   let totalLinesOfCode = 0;
 
@@ -125,24 +98,15 @@ export async function generateCodebaseGraph(workspaceRoot, maxDepth = 6) {
 
         let size = 0;
         let lineCount = 0;
-        let contentSnippet = '';
 
         try {
           const stat = fs.statSync(fullPath);
           size = stat.size;
           
-          if (size < 500000) { // Only read files < 500KB
+          if (size < 500000) { // Only count lines for files < 500KB
             const content = fs.readFileSync(fullPath, 'utf8');
             lineCount = content.split('\n').length;
             totalLinesOfCode += lineCount;
-
-            const fileImports = extractImports(fullPath, content);
-            if (fileImports.length > 0) {
-              dependencies.push({
-                file: relPath,
-                imports: fileImports
-              });
-            }
 
             // Detect tech stack
             if (entry.name === 'package.json') {
@@ -150,7 +114,7 @@ export async function generateCodebaseGraph(workspaceRoot, maxDepth = 6) {
                 const pkg = JSON.parse(content);
                 const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
                 Object.keys(allDeps).forEach((dep) => {
-                  if (['react', 'vue', 'svelte', 'express', 'tailwindcss', 'vite', 'next', 'monaco-editor', 'lucide-react', 'ws', 'mermaid'].includes(dep)) {
+                  if (['react', 'vue', 'svelte', 'express', 'tailwindcss', 'vite', 'next', 'monaco-editor', 'lucide-react', 'ws', 'fastify', 'typescript'].includes(dep)) {
                     techStack.add(dep);
                   }
                 });
@@ -159,7 +123,7 @@ export async function generateCodebaseGraph(workspaceRoot, maxDepth = 6) {
           }
         } catch (e) {}
 
-        const fileRole = getFileRole(fullPath, entry.name);
+        const fileRole = getFileRole(entry.name);
         const fileObj = {
           name: entry.name,
           path: fullPath,
@@ -179,18 +143,22 @@ export async function generateCodebaseGraph(workspaceRoot, maxDepth = 6) {
 
   scanDir(resolvedRoot, directoryTree, 0);
 
-  // Generate ultra-dense, token-optimized ASCII Cartography Map for LLM Context
-  let compressedMap = `📁 [WORKSPACE CARTOGRAPHY]: ${path.basename(resolvedRoot)} (${allFiles.length} source files, ~${totalLinesOfCode} LOC)\n`;
-  compressedMap += `⚡ [DETECTED STACK]: ${Array.from(techStack).join(', ') || 'Standard Project'}\n`;
-  compressedMap += `🗺️ [KEY ARCHITECTURE & ENTRY POINTS]:\n`;
-
+  // Generate ultra-dense, token-optimized ASCII Workspace Map for LLM Context
+  let compressedMap = `📁 [WORKSPACE MAP]: ${path.basename(resolvedRoot)} (${allFiles.length} source files, ~${totalLinesOfCode} LOC)\n`;
+  if (techStack.size > 0) {
+    compressedMap += `⚡ [STACK]: ${Array.from(techStack).join(', ')}\n`;
+  }
+  
   // Highlight entry points & configs
   const keyFiles = allFiles.filter(f => f.role === 'entry' || f.role === 'config').slice(0, 15);
-  keyFiles.forEach(f => {
-    compressedMap += `  ★ ${f.relPath} (${f.role.toUpperCase()}, ${f.lineCount} lines)\n`;
-  });
+  if (keyFiles.length > 0) {
+    compressedMap += `🗺️ [KEY FILES & ENTRY POINTS]:\n`;
+    keyFiles.forEach(f => {
+      compressedMap += `  ★ ${f.relPath} (${f.role.toUpperCase()}, ${f.lineCount} lines)\n`;
+    });
+  }
 
-  compressedMap += `📂 [STRUCTURE OUTLINE]:\n`;
+  compressedMap += `📂 [STRUCTURE TREE]:\n`;
   
   // Create grouped outline by top-level folders
   const folderGroups = {};
@@ -203,74 +171,18 @@ export async function generateCodebaseGraph(workspaceRoot, maxDepth = 6) {
 
   Object.entries(folderGroups).forEach(([dirName, files]) => {
     compressedMap += `  ├─ 📁 ${dirName}/ (${files.length} files)\n`;
-    files.slice(0, 8).forEach((f) => {
+    files.slice(0, 10).forEach((f) => {
       compressedMap += `  │   📄 ${path.basename(f.relPath)} [${f.role}]\n`;
     });
-    if (files.length > 8) {
-      compressedMap += `  │   ... +${files.length - 8} more\n`;
+    if (files.length > 10) {
+      compressedMap += `  │   ... +${files.length - 10} more\n`;
     }
   });
 
-  // Generate Comprehensive, High-Fidelity Mermaid Architecture Diagram
-  let mermaidGraph = `graph TB\n`;
-
-  // 1. Frontend Subgraph
-  mermaidGraph += `  subgraph Frontend["💻 Frontend Layer (React 18 + Vite)"]\n`;
-  mermaidGraph += `    UI_App["🚀 App.jsx<br/><i>(State & Multi-Pane Layout)</i>"]:::ui\n`;
-  mermaidGraph += `    UI_Canvas["💬 MainCanvas.jsx<br/><i>(Dual-Stream Chat & Terminal)</i>"]:::ui\n`;
-  mermaidGraph += `    UI_Editor["📝 FileViewerPane.jsx<br/><i>(Monaco Diff & Live Editor)</i>"]:::ui\n`;
-  mermaidGraph += `    UI_Graph["🗺️ CodebaseGraphViewer.jsx<br/><i>(AST & Cartography)</i>"]:::ui\n`;
-  mermaidGraph += `    UI_Skills["✨ SkillsHub.jsx<br/><i>(GitHub Inspector & Skills)</i>"]:::ui\n`;
-  mermaidGraph += `    UI_Auth["🔐 LoginPage.jsx<br/><i>(CLI Auth Gate)</i>"]:::ui\n`;
-  mermaidGraph += `    UI_WS["⚡ websocket.js & api.js<br/><i>(RPC & Realtime Client)</i>"]:::service\n`;
-  mermaidGraph += `  end\n\n`;
-
-  // 2. Backend Gateway Subgraph
-  mermaidGraph += `  subgraph Backend["⚡ Backend Gateway (Node.js + Express)"]\n`;
-  mermaidGraph += `    SRV_Main["🌐 server/src/index.js<br/><i>(HTTP & WS Server :3001)</i>"]:::server\n`;
-  mermaidGraph += `    SRV_WS["🔌 ws.js<br/><i>(WebSocket Dispatcher)</i>"]:::server\n`;
-  mermaidGraph += `    SRV_Agent["🧠 agentEngine.js<br/><i>(Process Stream Runner)</i>"]:::server\n`;
-  mermaidGraph += `    SRV_Graph["🗺️ graphEngine.js<br/><i>(AST Cartographer)</i>"]:::server\n`;
-  mermaidGraph += `    SRV_Routes["🛣️ routes/<br/><i>(workspace, skills, system, sessions)</i>"]:::server\n`;
-  mermaidGraph += `  end\n\n`;
-
-  // 3. Engine & Environment Subgraph
-  mermaidGraph += `  subgraph Engine["🤖 Antigravity 2.0 CLI & Storage"]\n`;
-  mermaidGraph += `    CLI_Bin["⚙️ agy.exe<br/><i>(stream-json Agent Runtime)</i>"]:::cli\n`;
-  mermaidGraph += `    CLI_Skills["📦 .gemini/skills/<br/><i>(Cartographer, Token Saver, Patcher)</i>"]:::cli\n`;
-  mermaidGraph += `    CLI_Brain["🧠 brain/<conversation-id>/<br/><i>(JSONL Trajectory Logs & Artifacts)</i>"]:::cli\n`;
-  mermaidGraph += `  end\n\n`;
-
-  // 4. Connect Cross-Layer Pipelines
-  mermaidGraph += `  UI_App --> UI_Canvas\n`;
-  mermaidGraph += `  UI_App --> UI_Editor\n`;
-  mermaidGraph += `  UI_App --> UI_Graph\n`;
-  mermaidGraph += `  UI_App --> UI_Skills\n`;
-  mermaidGraph += `  UI_App --> UI_Auth\n`;
-  mermaidGraph += `  UI_Canvas --> UI_WS\n`;
-  mermaidGraph += `  UI_Graph --> UI_WS\n`;
-  mermaidGraph += `  UI_Skills --> UI_WS\n\n`;
-
-  mermaidGraph += `  UI_WS <== "WebSocket Stream (/ws)" ==> SRV_WS\n`;
-  mermaidGraph += `  UI_WS <== "REST API (/api/*)" ==> SRV_Routes\n`;
-  mermaidGraph += `  SRV_WS --> SRV_Agent\n`;
-  mermaidGraph += `  SRV_Routes --> SRV_Graph\n`;
-  mermaidGraph += `  SRV_Agent --> SRV_Graph\n\n`;
-
-  mermaidGraph += `  SRV_Agent <== "spawn(agy, -p ...)" ==> CLI_Bin\n`;
-  mermaidGraph += `  CLI_Bin --> CLI_Skills\n`;
-  mermaidGraph += `  CLI_Bin --> CLI_Brain\n\n`;
-
-  // 5. Stylings for pure Obsidian Dark Theme (no grey backgrounds)
-  mermaidGraph += `  classDef ui fill:#0f172a,stroke:#6366f1,stroke-width:1.5px,color:#f8fafc,rx:10,ry:10;\n`;
-  mermaidGraph += `  classDef server fill:#06281e,stroke:#10b981,stroke-width:1.5px,color:#f0fdf4,rx:10,ry:10;\n`;
-  mermaidGraph += `  classDef cli fill:#2a1506,stroke:#f59e0b,stroke-width:1.5px,color:#fffbeb,rx:10,ry:10;\n`;
-  mermaidGraph += `  classDef service fill:#082838,stroke:#06b6d4,stroke-width:1.5px,color:#ecfeff,rx:10,ry:10;\n`;
-
   // Calculate token efficiency estimate
-  const estimatedRawSearchTokens = allFiles.length * 80 + 3000; // ~10,000+ tokens
-  const optimizedCartographyTokens = Math.round(compressedMap.length / 3.8); // ~350 tokens
-  const tokensSaved = Math.max(0, estimatedRawSearchTokens - optimizedCartographyTokens);
+  const estimatedRawSearchTokens = allFiles.length * 80 + 2000;
+  const optimizedMapTokens = Math.round(compressedMap.length / 3.8);
+  const tokensSaved = Math.max(0, estimatedRawSearchTokens - optimizedMapTokens);
   const savingsPercent = Math.round((tokensSaved / estimatedRawSearchTokens) * 100);
 
   return {
@@ -282,12 +194,14 @@ export async function generateCodebaseGraph(workspaceRoot, maxDepth = 6) {
     directoryTree,
     files: allFiles,
     compressedMap,
-    mermaidGraph,
     tokenStats: {
       rawSearchTokens: estimatedRawSearchTokens,
-      optimizedCartographyTokens,
+      optimizedMapTokens,
       tokensSaved,
       savingsPercent: `${savingsPercent}%`
     }
   };
 }
+
+// Backward-compatibility alias
+export const generateCodebaseGraph = generateWorkspaceMap;

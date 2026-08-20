@@ -102,6 +102,24 @@ export async function getSessionTranscript(sessionId) {
   return res.json();
 }
 
+export async function getSessionMessages(sessionId) {
+  const res = await fetch(`/api/sessions/${sessionId}/messages`);
+  if (!res.ok) throw new Error('Failed to fetch session messages');
+  return res.json();
+}
+
+export async function deleteSession(sessionId) {
+  const res = await fetch(`/api/sessions/${sessionId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete session');
+  return res.json();
+}
+
+export function getSessionExportUrl(sessionId) {
+  return `/api/sessions/${sessionId}/export`;
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -178,11 +196,15 @@ export async function installSkill(skillPayload) {
   return res.json();
 }
 
-export async function deleteSkill(skillPath) {
+export async function deleteSkill(skillPath, slug, projectPath) {
+  const payload = typeof skillPath === 'object' 
+    ? skillPath 
+    : { skillPath, slug, projectPath };
+
   const res = await fetchWithTimeout('/api/skills', {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ skillPath }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -191,12 +213,28 @@ export async function deleteSkill(skillPath) {
   return res.json();
 }
 
-export async function getCodebaseGraph(workspacePath = '') {
-  const query = workspacePath ? `?path=${encodeURIComponent(workspacePath)}` : '';
-  const res = await fetchWithTimeout(`/api/workspace/graph${query}`, {}, 15000);
+export async function toggleSkillAutoInject(slug, enabled) {
+  const res = await fetchWithTimeout('/api/skills/auto-inject/toggle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, enabled }),
+  });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Failed to generate codebase graph');
+    throw new Error(err.error || 'Failed to toggle auto-inject');
+  }
+  return res.json();
+}
+
+export async function copySkillToProject(slug, projectPath) {
+  const res = await fetchWithTimeout('/api/skills/copy-to-project', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ slug, projectPath }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Failed to copy skill to project');
   }
   return res.json();
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Sparkles, 
   Search, 
@@ -18,9 +18,29 @@ import {
   ExternalLink,
   BookOpen,
   FolderGit2,
+  Zap,
+  ZapOff,
+  Copy,
+  Tag,
   X
 } from 'lucide-react';
-import { getSkills, inspectGithubSkill, installSkill, deleteSkill } from '../services/api';
+import { 
+  getSkills, 
+  inspectGithubSkill, 
+  installSkill, 
+  deleteSkill,
+  toggleSkillAutoInject,
+  copySkillToProject
+} from '../services/api';
+
+const CATEGORIES = [
+  { id: 'all', label: 'All Categories', icon: Tag },
+  { id: 'Token & Optimization', label: 'Token & Optimization', emoji: '🚀' },
+  { id: 'Coding & Refactoring', label: 'Coding & Refactoring', emoji: '🛠️' },
+  { id: 'Architecture & Workflow', label: 'Architecture & Workflow', emoji: '🌐' },
+  { id: 'Framework & Stack', label: 'Framework & Stack', emoji: '📦' },
+  { id: 'General & Automation', label: 'General & Automation', emoji: '⚡' },
+];
 
 export default function SkillsHub({
   activeProject,
@@ -31,11 +51,13 @@ export default function SkillsHub({
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [scopeFilter, setScopeFilter] = useState('all'); // 'all' | 'project' | 'global' | 'builtin'
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [actionLoading, setActionLoading] = useState({});
 
   // GitHub Installation Modal State
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
   const [githubUrl, setGithubUrl] = useState('');
-  const [installScope, setInstallScope] = useState('project'); // 'project' | 'global'
+  const [installScope, setInstallScope] = useState('global'); // Default to global so every skill is universally usable
   const [isInspecting, setIsInspecting] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const [inspectedSkill, setInspectedSkill] = useState(null);
@@ -61,6 +83,46 @@ export default function SkillsHub({
   useEffect(() => {
     loadSkills();
   }, [projectPath]);
+
+  // Toggle Auto-Inject on Session Start
+  const handleToggleAutoInject = async (skill) => {
+    const slug = skill.slug || skill.name;
+    const newStatus = !skill.isAutoInject;
+    setActionLoading((prev) => ({ ...prev, [slug]: true }));
+    try {
+      await toggleSkillAutoInject(slug, newStatus);
+      setSkills((prev) =>
+        prev.map((s) =>
+          s.slug === slug || s.name === slug
+            ? { ...s, isAutoInject: newStatus, isUsedInProject: s.scope === 'project' || newStatus }
+            : s
+        )
+      );
+    } catch (err) {
+      alert(`Failed to update auto-inject: ${err.message}`);
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [slug]: false }));
+    }
+  };
+
+  // Copy Global Skill to Local Project Folder
+  const handleCopyToProject = async (skill) => {
+    if (!projectPath) {
+      alert('Please select an active project folder first.');
+      return;
+    }
+    const slug = skill.slug || skill.name;
+    setActionLoading((prev) => ({ ...prev, [`copy-${slug}`]: true }));
+    try {
+      await copySkillToProject(slug, projectPath);
+      await loadSkills();
+      alert(`Skill "${skill.name}" copied to ${projectPath}/.gemini/skills/${slug}`);
+    } catch (err) {
+      alert(`Failed to copy skill: ${err.message}`);
+    } finally {
+      setActionLoading((prev) => ({ ...prev, [`copy-${slug}`]: false }));
+    }
+  };
 
   // Handle GitHub Inspection
   const handleInspectGithub = async (e) => {
@@ -100,7 +162,7 @@ export default function SkillsHub({
         skillData: inspectedSkill,
       });
 
-      setInstallSuccess(`Skill "${inspectedSkill.name}" installed successfully!`);
+      setInstallSuccess(`Skill "${inspectedSkill.name}" installed globally and ready!`);
       setTimeout(() => {
         setInstallSuccess('');
         setIsInstallModalOpen(false);
@@ -115,27 +177,91 @@ export default function SkillsHub({
     }
   };
 
-  // Handle Skill Deletion
+  // Handle Skill Deletion or Removal from Project
   const handleDeleteSkill = async (skill) => {
-    if (!window.confirm(`Are you sure you want to remove the skill "${skill.name}"?`)) return;
+    // 1. If deleting a Local Project Skill:
+    if (skill.scope === 'project') {
+      const confirmProjectDelete = window.confirm(
+        `Remove "${skill.name}" from this project's local .gemini/skills folder?\n\n(This will permanently delete the folder from this project).`
+      );
+      if (!confirmProjectDelete) return;
+
+      try {
+        await deleteSkill({
+          skillPath: skill.path,
+          slug: skill.slug,
+          projectPath: activeProject?.workspacePath,
+        });
+        loadSkills();
+      } catch (err) {
+        alert(`Error deleting project skill: ${err.message}`);
+      }
+      return;
+    }
+
+    // 2. If deleting a Global Skill from the Global tab:
+    const confirmGlobalDelete = window.confirm(
+      `⚠️ Warning: You are deleting "${skill.name}" globally from ~/.gemini/skills.\n\nThis will remove it from all projects. Are you sure you want to proceed?`
+    );
+    if (!confirmGlobalDelete) return;
 
     try {
-      await deleteSkill(skill.path);
+      await deleteSkill({
+        skillPath: skill.path,
+        slug: skill.slug,
+      });
       loadSkills();
     } catch (err) {
-      alert(`Error deleting skill: ${err.message}`);
+      alert(`Error deleting global skill: ${err.message}`);
     }
   };
 
-  // Filter skills
-  const filteredSkills = skills.filter((s) => {
-    const matchesScope = scopeFilter === 'all' || s.scope === scopeFilter;
-    const matchesSearch = 
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.triggers || []).some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesScope && matchesSearch;
-  });
+  // Deduplicate unique skills per scope
+  const uniqueSkills = useMemo(() => {
+    const seen = new Set();
+    return skills.filter((s) => {
+      const key = `${s.scope}:${(s.slug || s.name).toLowerCase().trim()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [skills]);
+
+  // Project Tab Skills: strictly local project skills installed in .gemini/skills
+  const projectActiveSkills = useMemo(() => {
+    return uniqueSkills.filter((s) => s.scope === 'project');
+  }, [uniqueSkills]);
+
+  // Filter skills based on scope, category, and search query
+  const filteredSkills = useMemo(() => {
+    const seenCard = new Set();
+    const listToFilter = scopeFilter === 'project' ? projectActiveSkills : uniqueSkills;
+
+    return listToFilter.filter((s) => {
+      const matchesScope = 
+        scopeFilter === 'all' 
+          ? true 
+          : scopeFilter === 'project' 
+          ? true 
+          : s.scope === scopeFilter;
+
+      const matchesCategory = categoryFilter === 'all' || s.category === categoryFilter;
+
+      const matchesSearch = 
+        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        s.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (s.category && s.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (s.triggers || []).some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+      
+      if (!matchesScope || !matchesCategory || !matchesSearch) return false;
+
+      const cardKey = scopeFilter === 'all' ? (s.slug || s.name).toLowerCase() : `${s.scope}:${(s.slug || s.name).toLowerCase()}`;
+      if (scopeFilter === 'all' && seenCard.has(cardKey)) return false;
+      seenCard.add(cardKey);
+
+      return true;
+    });
+  }, [uniqueSkills, projectActiveSkills, scopeFilter, categoryFilter, searchQuery]);
 
   return (
     <div className="flex flex-col h-full bg-[#080c14] text-slate-200 font-mono select-none overflow-hidden">
@@ -148,7 +274,7 @@ export default function SkillsHub({
             </div>
             <h2 className="text-sm font-bold text-white tracking-tight">Antigravity Skills Hub</h2>
             <span className="px-2 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[10px] font-semibold">
-              {skills.length} Available
+              {uniqueSkills.length} Available
             </span>
           </div>
           <p className="text-[11px] text-slate-400 mt-0.5 font-sans">
@@ -191,15 +317,18 @@ export default function SkillsHub({
               scopeFilter === 'all' ? 'bg-indigo-600 text-white font-medium shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
-            All ({skills.length})
+            All ({uniqueSkills.length})
           </button>
           <button
             onClick={() => setScopeFilter('project')}
-            className={`px-2.5 py-1 rounded transition-colors cursor-pointer ${
+            className={`px-2.5 py-1 rounded transition-colors cursor-pointer flex items-center gap-1 ${
               scopeFilter === 'project' ? 'bg-indigo-600 text-white font-medium shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Project ({skills.filter(s => s.scope === 'project').length})
+            <span>Project ({projectActiveSkills.length})</span>
+            {activeProject?.name && (
+              <span className="text-[9px] opacity-70">[{activeProject.name}]</span>
+            )}
           </button>
           <button
             onClick={() => setScopeFilter('global')}
@@ -207,7 +336,7 @@ export default function SkillsHub({
               scopeFilter === 'global' ? 'bg-indigo-600 text-white font-medium shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Global ({skills.filter(s => s.scope === 'global').length})
+            Global ({uniqueSkills.filter(s => s.scope === 'global').length})
           </button>
           <button
             onClick={() => setScopeFilter('builtin')}
@@ -215,7 +344,7 @@ export default function SkillsHub({
               scopeFilter === 'builtin' ? 'bg-indigo-600 text-white font-medium shadow-sm' : 'text-slate-400 hover:text-white'
             }`}
           >
-            Built-in ({skills.filter(s => s.scope === 'builtin').length})
+            Built-in ({uniqueSkills.filter(s => s.scope === 'builtin').length})
           </button>
         </div>
 
@@ -226,10 +355,42 @@ export default function SkillsHub({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search skills, triggers, tools..."
+            placeholder="Search skills, triggers, categories..."
             className="w-full bg-surface border border-border/80 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-all font-mono"
           />
         </div>
+      </div>
+
+      {/* Usage Domain Category Pills */}
+      <div className="px-4 py-2 bg-[#0a0f1c] border-b border-border/60 flex items-center gap-1.5 overflow-x-auto text-[11px] no-scrollbar">
+        <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mr-1 flex items-center gap-1 shrink-0">
+          <Tag className="w-3 h-3 text-slate-500" />
+          <span>Category:</span>
+        </span>
+        {CATEGORIES.map((cat) => {
+          const isSelected = categoryFilter === cat.id;
+          const count = cat.id === 'all' 
+            ? (scopeFilter === 'project' ? projectActiveSkills.length : uniqueSkills.length)
+            : (scopeFilter === 'project' ? projectActiveSkills : uniqueSkills).filter(s => s.category === cat.id).length;
+
+          return (
+            <button
+              key={cat.id}
+              onClick={() => setCategoryFilter(cat.id)}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg transition-all shrink-0 cursor-pointer ${
+                isSelected
+                  ? 'bg-indigo-600/30 border border-indigo-500/60 text-indigo-200 font-semibold shadow-xs'
+                  : 'bg-surface/60 hover:bg-surface border border-border/60 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <span>{cat.emoji || ''}</span>
+              <span>{cat.label}</span>
+              <span className="text-[9px] opacity-70 bg-black/40 px-1 py-0.2 rounded font-mono">
+                {count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Skills Grid List */}
@@ -239,7 +400,9 @@ export default function SkillsHub({
             <Sparkles className="w-8 h-8 text-slate-600 mb-2" />
             <p className="font-semibold text-slate-400">No Skills Found</p>
             <p className="text-[11px] text-slate-500 mt-1 max-w-sm">
-              {searchQuery ? 'Try adjusting your search query or filters.' : 'Click "Install from GitHub" to add new Antigravity skills to your project.'}
+              {searchQuery || categoryFilter !== 'all'
+                ? 'Try adjusting your search query, scope, or category filter.'
+                : 'Click "Install from GitHub" to add new Antigravity skills.'}
             </p>
           </div>
         ) : (
@@ -247,34 +410,81 @@ export default function SkillsHub({
             {filteredSkills.map((skill) => {
               const isBuiltin = skill.scope === 'builtin';
               const isProject = skill.scope === 'project';
+              const isAutoInject = skill.isAutoInject;
 
               return (
                 <div
                   key={skill.id}
                   className="p-4 rounded-xl border border-border/80 bg-[#0d121c]/90 hover:border-indigo-500/50 transition-all shadow-md flex flex-col justify-between group space-y-3"
                 >
-                  <div className="space-y-2">
-                    {/* Card Top: Name & Scope Badge */}
+                  <div className="space-y-2.5">
+                    {/* Card Top: Name & Badges */}
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1.5 rounded-lg bg-surface border border-border/60 text-indigo-400">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="p-1.5 rounded-lg bg-surface border border-border/60 text-indigo-400 shrink-0">
                           <Cpu className="w-3.5 h-3.5" />
                         </div>
-                        <div>
-                          <h3 className="text-xs font-bold text-white tracking-tight">{skill.name}</h3>
-                          <span className="text-[10px] text-slate-500 font-mono">{skill.slug}</span>
+                        <div className="min-w-0">
+                          <h3 className="text-xs font-bold text-white tracking-tight truncate" title={skill.name}>{skill.name}</h3>
+                          <span className="text-[10px] text-slate-500 font-mono truncate block">{skill.slug}</span>
                         </div>
                       </div>
 
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
-                        isBuiltin
-                          ? 'bg-purple-950/40 border-purple-500/40 text-purple-300'
-                          : isProject
-                          ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
-                          : 'bg-blue-950/40 border-blue-500/40 text-blue-300'
-                      }`}>
-                        {skill.scope}
-                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {skill.category && (
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-surface border border-border/60 text-slate-300">
+                            {skill.category}
+                          </span>
+                        )}
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${
+                          isBuiltin
+                            ? 'bg-purple-950/40 border-purple-500/40 text-purple-300'
+                            : isProject
+                            ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                            : 'bg-blue-950/40 border-blue-500/40 text-blue-300'
+                        }`}>
+                          {skill.scope}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Auto-Inject on Session Start Interactive Toggle */}
+                    <div className={`p-2 rounded-lg border flex items-center justify-between gap-2 transition-all ${
+                      isAutoInject
+                        ? 'bg-indigo-950/20 border-indigo-500/40'
+                        : 'bg-surface/50 border-border/60'
+                    }`}>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Zap className={`w-3.5 h-3.5 shrink-0 ${isAutoInject ? 'text-amber-400 fill-amber-400' : 'text-slate-500'}`} />
+                        <div className="truncate">
+                          <div className="text-[10px] font-bold text-slate-200">Auto-Inject on Start</div>
+                          <div className="text-[9px] text-slate-400 font-sans truncate">
+                            {isAutoInject ? '⚡ Active in every session start' : 'Manual activation'}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleToggleAutoInject(skill)}
+                        disabled={actionLoading[skill.slug]}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                          isAutoInject
+                            ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/30'
+                            : 'bg-surface border border-border/80 text-slate-400 hover:text-white hover:bg-surface-hover'
+                        }`}
+                      >
+                        {actionLoading[skill.slug] ? (
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                        ) : isAutoInject ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span>Injected</span>
+                          </>
+                        ) : (
+                          <span>Enable</span>
+                        )}
+                      </button>
                     </div>
 
                     {/* Description */}
@@ -299,11 +509,28 @@ export default function SkillsHub({
 
                   {/* Card Bottom Actions */}
                   <div className="pt-2 border-t border-border/40 flex items-center justify-between text-[11px]">
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      {skill.files?.length || 1} file(s)
-                    </span>
+                    <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
+                      <span>{skill.files?.length || 1} file(s)</span>
+                      {scopeFilter === 'project' && !isProject && (
+                        <span className="text-indigo-400 font-sans">· Global</span>
+                      )}
+                    </div>
 
                     <div className="flex items-center gap-1.5">
+                      {/* Copy to Project Button if in Project tab and not yet in local project */}
+                      {scopeFilter === 'project' && !isProject && (
+                        <button
+                          type="button"
+                          onClick={() => handleCopyToProject(skill)}
+                          disabled={actionLoading[`copy-${skill.slug}`]}
+                          className="flex items-center gap-1 px-2 py-1 rounded bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 transition-colors text-[10px] cursor-pointer"
+                          title="Copy to project local .gemini/skills folder"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>{actionLoading[`copy-${skill.slug}`] ? 'Copying...' : 'Copy to Project'}</span>
+                        </button>
+                      )}
+
                       {onOpenSkillFile && skill.skillMdPath && (
                         <button
                           type="button"
@@ -321,7 +548,7 @@ export default function SkillsHub({
                           type="button"
                           onClick={() => handleDeleteSkill(skill)}
                           className="p-1 hover:bg-rose-500/20 text-slate-500 hover:text-rose-300 rounded transition-colors cursor-pointer"
-                          title="Delete Custom Skill"
+                          title="Delete Skill"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

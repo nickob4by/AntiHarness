@@ -4,11 +4,37 @@ import fs from 'fs';
 import os from 'os';
 import { recordPromptUsage } from './routes/system.js';
 import { getRootWorkspace } from './routes/workspace.js';
-import { generateCodebaseGraph } from './services/graphEngine.js';
+import { generateWorkspaceMap } from './services/graphEngine.js';
+import { getAutoInjectedSlugs } from './routes/skills.js';
+import { recordProjectUsage } from './services/projectUsage.js';
 
 // Store active agent stream runners and mapped sessions
 const activeRuns = new Map();
 const mappedSessions = new Set();
+
+// Helper to retrieve concise skill instructions for prompt injection
+function loadSkillInstructions(slug, workspacePath) {
+  const homeDir = os.homedir();
+  const candidatePaths = [
+    path.join(workspacePath, '.gemini', 'skills', slug, 'SKILL.md'),
+    path.join(workspacePath, '.agy', 'skills', slug, 'SKILL.md'),
+    path.join(homeDir, '.gemini', 'skills', slug, 'SKILL.md'),
+    path.join(homeDir, '.gemini', 'antigravity-cli', 'builtin', 'skills', slug, 'SKILL.md'),
+    path.join(homeDir, '.agy', 'skills', slug, 'SKILL.md'),
+  ];
+
+  for (const p of candidatePaths) {
+    if (fs.existsSync(p)) {
+      try {
+        const raw = fs.readFileSync(p, 'utf-8');
+        // Extract body or clean instructions (up to 800 chars per skill)
+        const clean = raw.replace(/^---[\s\S]*?---\s*/, '').trim();
+        return clean.substring(0, 800);
+      } catch (e) {}
+    }
+  }
+  return null;
+}
 
 export class AgentEngine {
   constructor(ws, sessionId) {
@@ -41,46 +67,99 @@ export class AgentEngine {
     activeRuns.set(this.sessionId, this);
     this.isAborted = false;
 
+    const isChatMode = options.mode === 'chat';
     const resolvedWorkspace = path.resolve(workspacePath || getRootWorkspace());
-    console.log(`[AgentEngine] Spawning agy for session ${this.sessionId} in cwd: ${resolvedWorkspace}`);
+    console.log(`[AgentEngine] Spawning agy for session ${this.sessionId} (mode: ${isChatMode ? 'chat' : 'agent'}) in cwd: ${resolvedWorkspace}`);
 
     this.send('AGENT_STREAM_START', {
       prompt,
       model,
+      mode: isChatMode ? 'chat' : 'agent',
       workspacePath: resolvedWorkspace,
       timestamp: Date.now(),
     });
 
     // Notify client of initial thinking phase with initial status
     this.send('AGENT_THOUGHT_START', { timestamp: Date.now() });
-    this.send('AGENT_THOUGHT_CHUNK', { 
-      text: `> Analyzing request for workspace: \`${resolvedWorkspace}\`...\n` 
-    });
 
-    // Auto-inject Token-Optimized Codebase Cartography if not yet mapped for this session
     let finalPrompt = prompt;
-    if (!mappedSessions.has(this.sessionId)) {
-      try {
-        const cartography = await generateCodebaseGraph(resolvedWorkspace, 4);
-        if (cartography?.compressedMap) {
-          finalPrompt = `[CODEBASE CARTOGRAPHY & ARCHITECTURE MAP (TOKEN-OPTIMIZED)]:\n${cartography.compressedMap}\n\n[USER INSTRUCTION]:\n${prompt}`;
-          this.send('AGENT_THOUGHT_CHUNK', {
-            text: `> 🗺️ Injected Codebase Cartography: ${cartography.totalFiles} source files mapped (~${cartography.tokenStats.savingsPercent} exploratory token savings).\n`
-          });
+
+    if (isChatMode) {
+      this.send('AGENT_THOUGHT_CHUNK', { 
+        text: `> 💬 Gemini Chat Mode: Direct conversational stream (zero workspace scan overhead).\n` 
+      });
+    } else {
+      this.send('AGENT_THOUGHT_CHUNK', { 
+        text: `> 🤖 Antigravity Agent Mode: Analyzing workspace: \`${resolvedWorkspace}\`...\n` 
+      });
+
+      // Auto-inject Token-Saving Workspace Map & Auto-Injected Skills for this session
+      if (!mappedSessions.has(this.sessionId)) {
+        const promptSections = [];
+        const injectedSkillNames = [];
+
+        try {
+          const wsMap = await generateWorkspaceMap(resolvedWorkspace, 4);
+          if (wsMap?.compressedMap) {
+            promptSections.push(`[WORKSPACE STRUCTURE & FILE TREE (TOKEN-OPTIMIZED)]:\n${wsMap.compressedMap}`);
+            this.send('AGENT_THOUGHT_CHUNK', {
+              text: `> 📁 Injected Workspace Map: ${wsMap.totalFiles} files indexed (~${wsMap.tokenStats.savingsPercent} exploratory token savings).\n`
+            });
+          }
+        } catch (e) {
+          console.error('[AgentEngine] Failed to generate workspace map:', e);
         }
+
+        // Load and inject all enabled auto-injected skills
+        try {
+          const autoSlugs = getAutoInjectedSlugs();
+          const activeSkillChunks = [];
+
+          for (const slug of autoSlugs) {
+            const instructions = loadSkillInstructions(slug, resolvedWorkspace);
+            if (instructions) {
+              injectedSkillNames.push(slug);
+              activeSkillChunks.push(`### [SKILL: ${slug}]\n${instructions}`);
+            }
+          }
+
+          if (activeSkillChunks.length > 0) {
+            promptSections.push(`[ACTIVE SPECIALIZED SKILLS & AUTOMATION RULES]:\n${activeSkillChunks.join('\n\n')}`);
+            this.send('AGENT_THOUGHT_CHUNK', {
+              text: `> ⚡ Injected Auto-Skills: ${injectedSkillNames.join(', ')} (${injectedSkillNames.length} active).\n`
+            });
+          }
+        } catch (e) {
+          console.error('[AgentEngine] Failed to load auto-injected skills:', e);
+        }
+
+        if (promptSections.length > 0) {
+          finalPrompt = `${promptSections.join('\n\n')}\n\n[USER INSTRUCTION]:\n${prompt}`;
+        }
+
         mappedSessions.add(this.sessionId);
-      } catch (e) {
-        console.error('[AgentEngine] Failed to generate cartography map:', e);
       }
+    }
+
+    // Caveman Output Compression
+    if (options.cavemanMode || prompt.includes('/caveman')) {
+      const cavemanRule = `[TOKEN OPTIMIZATION RULE: CAVEMAN OUTPUT COMPRESSION ACTIVE]\nRespond terse like smart caveman. All technical substance stays. Drop all pleasantries, filler, articles, and conversational narration. Code blocks, syntax, file paths, and CLI commands stay 100% byte-for-byte exact. Pattern: [thing] [action] [reason]. [next step].`;
+      finalPrompt = `${cavemanRule}\n\n${finalPrompt}`;
+      this.send('AGENT_THOUGHT_CHUNK', {
+        text: `> 🪨 Caveman Output Compression Active (Cuts ~70% output token consumption).\n`
+      });
     }
 
     // Map UI model names to agy CLI arguments with stream-json format
     const args = [
       '-p', finalPrompt,
-      '--add-dir', resolvedWorkspace,
       '--output-format', 'stream-json',
       '--dangerously-skip-permissions'
     ];
+
+    if (!isChatMode) {
+      args.push('--add-dir', resolvedWorkspace);
+    }
 
     const normalizedModel = (model || '').toLowerCase();
     if (normalizedModel.includes('thinking')) {
@@ -100,6 +179,7 @@ export class AgentEngine {
     let accumulatedOutput = '';
     let isThinking = true;
     let lineBuffer = '';
+    const startTime = Date.now();
 
     try {
       this.childProcess = spawn(agyBin, args, {
@@ -204,14 +284,35 @@ export class AgentEngine {
           this.send('AGENT_THOUGHT_END', { timestamp: Date.now() });
         }
 
-        // Record real usage update
+        // Record real global usage update
         recordPromptUsage();
 
         const finalContent = accumulatedOutput.trim() || `(Response completed, exit code ${code})`;
+        const durationMs = Date.now() - startTime;
+
+        // Calculate token usage metrics
+        const inputTokens = Math.max(1, Math.round(finalPrompt.length / 3.8));
+        const outputTokens = Math.max(1, Math.round(finalContent.length / 3.8));
+        const totalTokens = inputTokens + outputTokens;
+        const isCaveman = !!(options.cavemanMode || prompt.includes('/caveman'));
+
+        const tokenUsage = {
+          inputTokens,
+          outputTokens,
+          totalTokens,
+          durationMs,
+          cavemanActive: isCaveman,
+          estimatedSavingsPercent: isCaveman ? 70 : 0,
+        };
+
+        // Record persistent project token usage
+        const projectStats = recordProjectUsage(resolvedWorkspace, tokenUsage);
 
         this.send('AGENT_STREAM_END', {
           completeResponse: finalContent,
           timestamp: Date.now(),
+          tokenUsage,
+          projectUsage: projectStats,
         });
 
         activeRuns.delete(this.sessionId);

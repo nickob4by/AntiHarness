@@ -7,7 +7,7 @@ import ResizeHandle from './components/ResizeHandle';
 import StatusBar from './components/StatusBar';
 import LoginPage from './components/LoginPage';
 import SkillsHub from './components/SkillsHub';
-import CodebaseGraphViewer from './components/CodebaseGraphViewer';
+import HistoryModal from './components/HistoryModal';
 import { 
   getSystemHealth, 
   getUsage,
@@ -104,6 +104,7 @@ export default function App() {
   // Sessions & Trajectory history
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [selectedSessionTranscript, setSelectedSessionTranscript] = useState(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   // Project-Scoped Multi-Agent Chat Tabs: Map<projectPath, tab[]>
   const [projectChatTabsMap, setProjectChatTabsMap] = useState({
@@ -191,6 +192,28 @@ export default function App() {
     if (activeTabId === tabId) {
       setActiveTabId(filtered[filtered.length - 1].id);
     }
+  };
+
+  // Resume an archived session into a new chat tab
+  const handleResumeSessionInTab = ({ id, title, messages }) => {
+    const newTabId = `resume-${id}`;
+    const resumedTab = {
+      id: newTabId,
+      projectPath: activeProjectPath,
+      title: title || `Archived Session`,
+      messages: messages || [],
+      isStreaming: false,
+      currentStream: { thoughts: '', isThinking: false, tools: [], content: '' }
+    };
+
+    setProjectChatTabsMap((prev) => {
+      const existing = getProjectTabs(prev, activeProjectPath, workspace?.name);
+      return {
+        ...prev,
+        [activeProjectPath]: [...existing, resumedTab]
+      };
+    });
+    setActiveTabId(newTabId);
   };
 
   // Load project files for a specific project root
@@ -446,8 +469,11 @@ export default function App() {
               ...tab,
               isStreaming: true,
               currentStream: { 
-                thoughts: `> Analyzing request for: \`${data.payload?.workspacePath || activeProjectRef.current}\`...\n`, 
+                thoughts: data.payload?.mode === 'chat' 
+                  ? `> 💬 Gemini Chat Stream: Active...\n` 
+                  : `> Analyzing request for: \`${data.payload?.workspacePath || activeProjectRef.current}\`...\n`, 
                 isThinking: true, 
+                mode: data.payload?.mode || 'agent',
                 tools: [], 
                 content: '' 
               },
@@ -543,20 +569,37 @@ export default function App() {
 
           case 'AGENT_STREAM_END': {
             const completedResponse = data.payload.completeResponse;
+            const tokenUsage = data.payload.tokenUsage || null;
+            const projectUsage = data.payload.projectUsage || null;
+
             updateTab((tab) => {
               const finalMessage = {
                 role: 'assistant',
+                mode: tab.currentStream.mode || 'agent',
                 content: completedResponse || tab.currentStream.content,
                 thoughts: tab.currentStream.thoughts || null,
                 tools: tab.currentStream.tools || [],
+                tokenUsage,
               };
               return {
                 ...tab,
                 isStreaming: false,
                 messages: [...tab.messages, finalMessage],
-                currentStream: { thoughts: '', isThinking: false, tools: [], content: '' },
+                currentStream: { thoughts: '', isThinking: false, mode: 'agent', tools: [], content: '' },
               };
             });
+
+            // Update project token usage metrics
+            if (projectUsage) {
+              setProjects((prev) =>
+                prev.map((p) =>
+                  normalizePath(p.path) === normalizePath(projectUsage.projectPath)
+                    ? { ...p, usage: projectUsage }
+                    : p
+                )
+              );
+            }
+
             loadProjectFiles(activeProjectRef.current);
             break;
           }
@@ -766,7 +809,13 @@ export default function App() {
       return;
     }
 
-    const userMsg = { role: 'user', content: text };
+    const isChatMode = options.mode === 'chat';
+    const userMsg = { 
+      role: 'user', 
+      content: text,
+      mode: isChatMode ? 'chat' : 'agent',
+    };
+    
     setProjectChatTabsMap((prev) => {
       const existingTabs = getProjectTabs(prev, activeProjectPath, workspace?.name);
       const hasActive = existingTabs.some((t) => t.id === activeTabId);
@@ -783,8 +832,11 @@ export default function App() {
                 messages: [...(t.messages || []), userMsg], 
                 isStreaming: true,
                 currentStream: {
-                  thoughts: `> Analyzing request for: \`${activeProjectPath}\`...\n`,
+                  thoughts: isChatMode
+                    ? `> 💬 Gemini Chat Stream: Active...\n`
+                    : `> Analyzing request for: \`${activeProjectPath}\`...\n`,
                   isThinking: true,
+                  mode: isChatMode ? 'chat' : 'agent',
                   tools: [],
                   content: '',
                 }
@@ -800,6 +852,8 @@ export default function App() {
       sessionId: activeTabId,
       model: options.model || 'Gemini 3.7 Flash',
       thinkingEffort: options.thinkingEffort || 'medium',
+      mode: isChatMode ? 'chat' : 'agent',
+      cavemanMode: options.cavemanMode ?? true,
     });
   };
 
@@ -885,7 +939,85 @@ export default function App() {
 
       {/* Main Workspace Layout with Resizers */}
       <div ref={containerRef} className="flex flex-1 overflow-hidden relative">
-        {/* If Skills Hub view is active, render SkillsHub in full view */}
+        {/* 1. Microsoft Edge Style Clean Sidebar with Nested Subfolder Trees & Skills Button */}
+        {showSidebar && (
+          isCompact ? (
+            <>
+              <div 
+                className="fixed inset-0 bg-black/60 z-30 backdrop-blur-xs transition-opacity" 
+                onClick={() => setShowSidebar(false)}
+              />
+              <div className="absolute inset-y-0 left-0 z-40 bg-[#0a0d14] border-r border-border shadow-2xl flex">
+                <Sidebar
+                  width={Math.min(sidebarWidth, 300)}
+                  projects={projects}
+                  activeProject={{ name: workspace?.name, workspacePath: activeProjectPath }}
+                  projectFilesMap={projectFilesMap}
+                  expandedProjects={expandedProjects}
+                  expandedFolders={expandedFolders}
+                  folderChildrenMap={folderChildrenMap}
+                  loadingFolders={loadingFolders}
+                  currentMainView={currentMainView}
+                  onSelectMainView={(view) => {
+                    setCurrentMainView(view);
+                    setShowSidebar(false);
+                  }}
+                  onToggleProjectExpand={handleToggleProjectExpand}
+                  onToggleFolder={handleToggleFolder}
+                  onSelectProject={(p) => {
+                    setCurrentMainView('console');
+                    handleSelectProject(p);
+                    setShowSidebar(false);
+                  }}
+                  onAddProject={handleAddProject}
+                  onRemoveProject={handleRemoveProject}
+                  onSelectFile={(f) => {
+                    setCurrentMainView('console');
+                    handleOpenFile(f);
+                  }}
+                  selectedFile={activeFile}
+                  onCollapse={() => setShowSidebar(false)}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <Sidebar
+                width={sidebarWidth}
+                projects={projects}
+                activeProject={{ name: workspace?.name, workspacePath: activeProjectPath }}
+                projectFilesMap={projectFilesMap}
+                expandedProjects={expandedProjects}
+                expandedFolders={expandedFolders}
+                folderChildrenMap={folderChildrenMap}
+                loadingFolders={loadingFolders}
+                currentMainView={currentMainView}
+                onSelectMainView={setCurrentMainView}
+                onToggleProjectExpand={handleToggleProjectExpand}
+                onToggleFolder={handleToggleFolder}
+                onSelectProject={(p) => {
+                  setCurrentMainView('console');
+                  handleSelectProject(p);
+                }}
+                onAddProject={handleAddProject}
+                onRemoveProject={handleRemoveProject}
+                onSelectFile={(f) => {
+                  setCurrentMainView('console');
+                  handleOpenFile(f);
+                }}
+                selectedFile={activeFile}
+                onCollapse={() => setShowSidebar(false)}
+              />
+              <ResizeHandle
+                onMouseDown={handleSidebarMouseDown}
+                onDoubleClick={() => setSidebarWidth(260)}
+                isDragging={isDraggingSidebar}
+              />
+            </>
+          )
+        )}
+
+        {/* Center Area: Skills Hub View OR Main Console & Code Split Canvas */}
         {currentMainView === 'skills' ? (
           <div className="flex-1 h-full overflow-hidden">
             <SkillsHub
@@ -898,191 +1030,111 @@ export default function App() {
               onClose={() => setCurrentMainView('console')}
             />
           </div>
-        ) : currentMainView === 'graph' ? (
-          <div className="flex-1 h-full overflow-hidden">
-            <CodebaseGraphViewer
-              activeProject={{ name: workspace?.name, workspacePath: activeProjectPath }}
-              onOpenFile={(file) => {
-                setCurrentMainView('console');
-                setShowFilePane(true);
-                handleOpenFile(file);
-              }}
-              onSendPromptToChat={(prompt) => {
-                setCurrentMainView('console');
-                handleSendMessage(prompt);
-              }}
-              onClose={() => setCurrentMainView('console')}
-            />
-          </div>
+        ) : isCompact ? (
+          compactPane === 'chat' ? (
+            <div className="flex-1 h-full flex flex-col overflow-hidden min-w-0">
+              <MainCanvas
+                selectedSessionTranscript={selectedSessionTranscript}
+                selectedSessionId={selectedSessionId}
+                chatTabs={currentProjectTabs}
+                activeTabId={activeTabId}
+                onSelectChatTab={(id) => setActiveTabId(id)}
+                onAddChatTab={handleAddChatTab}
+                onCloseChatTab={handleCloseChatTab}
+                messages={activeTab.messages}
+                currentStream={activeTab.currentStream}
+                onSendMessage={handleSendMessage}
+                onRunShellCommand={handleRunShellCommand}
+                onStopStream={handleStopStream}
+                isStreaming={activeTab.isStreaming}
+                workspace={{ name: workspace?.name, workspacePath: activeProjectPath }}
+                onOpenFile={handleOpenFile}
+                onOpenHistoryModal={() => setShowHistoryModal(true)}
+              />
+            </div>
+          ) : (
+            <div className="flex-1 h-full flex flex-col overflow-hidden min-w-0">
+              <FileViewerPane
+                openFiles={openFiles}
+                activeFile={activeFile}
+                fileContents={fileContents}
+                originalContents={originalContents}
+                liveAiModifiedFile={liveAiModifiedFile}
+                onSelectFileTab={(file) => setActiveFile(file)}
+                onCloseFileTab={handleCloseFileTab}
+                onReloadFile={handleReloadFile}
+                onSaveFile={handleSaveFile}
+                isExpanded={true}
+                onToggleExpand={() => {}}
+                onClosePane={() => setCompactPane('chat')}
+              />
+            </div>
+          )
         ) : (
           <>
-            {/* 1. Microsoft Edge Style Clean Sidebar with Nested Subfolder Trees */}
-            {showSidebar && (
-              isCompact ? (
-                <>
-                  <div 
-                    className="fixed inset-0 bg-black/60 z-30 backdrop-blur-xs transition-opacity" 
-                    onClick={() => setShowSidebar(false)}
-                  />
-                  <div className="absolute inset-y-0 left-0 z-40 bg-[#0a0d14] border-r border-border shadow-2xl flex">
-                    <Sidebar
-                      width={Math.min(sidebarWidth, 300)}
-                      projects={projects}
-                      activeProject={{ name: workspace?.name, workspacePath: activeProjectPath }}
-                      projectFilesMap={projectFilesMap}
-                      expandedProjects={expandedProjects}
-                      expandedFolders={expandedFolders}
-                      folderChildrenMap={folderChildrenMap}
-                      loadingFolders={loadingFolders}
-                      onToggleProjectExpand={handleToggleProjectExpand}
-                      onToggleFolder={handleToggleFolder}
-                      onSelectProject={(p) => {
-                        handleSelectProject(p);
-                        setShowSidebar(false);
-                      }}
-                      onAddProject={handleAddProject}
-                      onRemoveProject={handleRemoveProject}
-                      onSelectFile={handleOpenFile}
-                      selectedFile={activeFile}
-                      onCollapse={() => setShowSidebar(false)}
-                    />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Sidebar
-                    width={sidebarWidth}
-                    projects={projects}
-                    activeProject={{ name: workspace?.name, workspacePath: activeProjectPath }}
-                    projectFilesMap={projectFilesMap}
-                    expandedProjects={expandedProjects}
-                    expandedFolders={expandedFolders}
-                    folderChildrenMap={folderChildrenMap}
-                    loadingFolders={loadingFolders}
-                    onToggleProjectExpand={handleToggleProjectExpand}
-                    onToggleFolder={handleToggleFolder}
-                    onSelectProject={handleSelectProject}
-                    onAddProject={handleAddProject}
-                    onRemoveProject={handleRemoveProject}
-                    onSelectFile={handleOpenFile}
-                    selectedFile={activeFile}
-                    onCollapse={() => setShowSidebar(false)}
-                  />
-                  <ResizeHandle
-                    onMouseDown={handleSidebarMouseDown}
-                    onDoubleClick={() => setSidebarWidth(260)}
-                    isDragging={isDraggingSidebar}
-                  />
-                </>
-              )
+            {/* Center Main Canvas with Project-Scoped Unified Chat-Terminal Console */}
+            <div 
+              style={{ 
+                width: showFilePane 
+                  ? (isFilePaneExpanded ? '0%' : `${100 - filePaneRatio}%`) 
+                  : '100%' 
+              }}
+              className={`flex flex-col overflow-hidden transition-none ${
+                showFilePane && isFilePaneExpanded ? 'hidden' : 'flex'
+              }`}
+            >
+              <MainCanvas
+                selectedSessionTranscript={selectedSessionTranscript}
+                selectedSessionId={selectedSessionId}
+                chatTabs={currentProjectTabs}
+                activeTabId={activeTabId}
+                onSelectChatTab={(id) => setActiveTabId(id)}
+                onAddChatTab={handleAddChatTab}
+                onCloseChatTab={handleCloseChatTab}
+                messages={activeTab.messages}
+                currentStream={activeTab.currentStream}
+                onSendMessage={handleSendMessage}
+                onRunShellCommand={handleRunShellCommand}
+                onStopStream={handleStopStream}
+                isStreaming={activeTab.isStreaming}
+                workspace={{ name: workspace?.name, workspacePath: activeProjectPath }}
+                onOpenFile={handleOpenFile}
+                onOpenHistoryModal={() => setShowHistoryModal(true)}
+              />
+            </div>
+
+            {/* Center-Right Resizer between Chat and File Pane */}
+            {showFilePane && !isFilePaneExpanded && (
+              <ResizeHandle
+                onMouseDown={handleSplitMouseDown}
+                onDoubleClick={() => setFilePaneRatio(50)}
+                isDragging={isDraggingSplit}
+              />
             )}
 
-            {/* 2 & 4. Main Canvas & File Pane rendering based on screen mode */}
-            {isCompact ? (
-              compactPane === 'chat' ? (
-                <div className="flex-1 h-full flex flex-col overflow-hidden min-w-0">
-                  <MainCanvas
-                    selectedSessionTranscript={selectedSessionTranscript}
-                    selectedSessionId={selectedSessionId}
-                    chatTabs={currentProjectTabs}
-                    activeTabId={activeTabId}
-                    onSelectChatTab={(id) => setActiveTabId(id)}
-                    onAddChatTab={handleAddChatTab}
-                    onCloseChatTab={handleCloseChatTab}
-                    messages={activeTab.messages}
-                    currentStream={activeTab.currentStream}
-                    onSendMessage={handleSendMessage}
-                    onRunShellCommand={handleRunShellCommand}
-                    onStopStream={handleStopStream}
-                    isStreaming={activeTab.isStreaming}
-                    workspace={{ name: workspace?.name, workspacePath: activeProjectPath }}
-                    onOpenFile={handleOpenFile}
-                  />
-                </div>
-              ) : (
-                <div className="flex-1 h-full flex flex-col overflow-hidden min-w-0">
-                  <FileViewerPane
-                    openFiles={openFiles}
-                    activeFile={activeFile}
-                    fileContents={fileContents}
-                    originalContents={originalContents}
-                    liveAiModifiedFile={liveAiModifiedFile}
-                    onSelectFileTab={(file) => setActiveFile(file)}
-                    onCloseFileTab={handleCloseFileTab}
-                    onReloadFile={handleReloadFile}
-                    onSaveFile={handleSaveFile}
-                    isExpanded={true}
-                    onToggleExpand={() => {}}
-                    onClosePane={() => setCompactPane('chat')}
-                  />
-                </div>
-              )
-            ) : (
-              <>
-                {/* Center Main Canvas with Project-Scoped Unified Chat-Terminal Console */}
-                <div 
-                  style={{ 
-                    width: showFilePane 
-                      ? (isFilePaneExpanded ? '0%' : `${100 - filePaneRatio}%`) 
-                      : '100%' 
-                  }}
-                  className={`flex flex-col overflow-hidden transition-none ${
-                    showFilePane && isFilePaneExpanded ? 'hidden' : 'flex'
-                  }`}
-                >
-                  <MainCanvas
-                    selectedSessionTranscript={selectedSessionTranscript}
-                    selectedSessionId={selectedSessionId}
-                    chatTabs={currentProjectTabs}
-                    activeTabId={activeTabId}
-                    onSelectChatTab={(id) => setActiveTabId(id)}
-                    onAddChatTab={handleAddChatTab}
-                    onCloseChatTab={handleCloseChatTab}
-                    messages={activeTab.messages}
-                    currentStream={activeTab.currentStream}
-                    onSendMessage={handleSendMessage}
-                    onRunShellCommand={handleRunShellCommand}
-                    onStopStream={handleStopStream}
-                    isStreaming={activeTab.isStreaming}
-                    workspace={{ name: workspace?.name, workspacePath: activeProjectPath }}
-                    onOpenFile={handleOpenFile}
-                  />
-                </div>
-
-                {/* Center-Right Resizer between Chat and File Pane */}
-                {showFilePane && !isFilePaneExpanded && (
-                  <ResizeHandle
-                    onMouseDown={handleSplitMouseDown}
-                    onDoubleClick={() => setFilePaneRatio(50)}
-                    isDragging={isDraggingSplit}
-                  />
-                )}
-
-                {/* Right Workspace File Viewer Window */}
-                {showFilePane && (
-                  <div 
-                    style={{ 
-                      width: isFilePaneExpanded ? '100%' : `${filePaneRatio}%` 
-                    }}
-                    className="flex flex-col overflow-hidden transition-none"
-                  >
-                    <FileViewerPane
-                      openFiles={openFiles}
-                      activeFile={activeFile}
-                      fileContents={fileContents}
-                      originalContents={originalContents}
-                      liveAiModifiedFile={liveAiModifiedFile}
-                      onSelectFileTab={(file) => setActiveFile(file)}
-                      onCloseFileTab={handleCloseFileTab}
-                      onReloadFile={handleReloadFile}
-                      onSaveFile={handleSaveFile}
-                      isExpanded={isFilePaneExpanded}
-                      onToggleExpand={() => setIsFilePaneExpanded(!isFilePaneExpanded)}
-                      onClosePane={() => setShowFilePane(false)}
-                    />
-                  </div>
-                )}
-              </>
+            {/* Right Workspace File Viewer Window */}
+            {showFilePane && (
+              <div 
+                style={{ 
+                  width: isFilePaneExpanded ? '100%' : `${filePaneRatio}%` 
+                }}
+                className="flex flex-col overflow-hidden transition-none"
+              >
+                <FileViewerPane
+                  openFiles={openFiles}
+                  activeFile={activeFile}
+                  fileContents={fileContents}
+                  originalContents={originalContents}
+                  liveAiModifiedFile={liveAiModifiedFile}
+                  onSelectFileTab={(file) => setActiveFile(file)}
+                  onCloseFileTab={handleCloseFileTab}
+                  onReloadFile={handleReloadFile}
+                  onSaveFile={handleSaveFile}
+                  isExpanded={isFilePaneExpanded}
+                  onToggleExpand={() => setIsFilePaneExpanded(!isFilePaneExpanded)}
+                  onClosePane={() => setShowFilePane(false)}
+                />
+              </div>
             )}
           </>
         )}
@@ -1093,6 +1145,15 @@ export default function App() {
         connectionStatus={connectionStatus}
         workspace={{ name: workspace?.name, workspacePath: activeProjectPath }}
         usageData={usageData}
+        projectUsage={projects.find((p) => normalizePath(p.path) === normalizePath(activeProjectPath))?.usage}
+      />
+
+      {/* Session Memory & History Studio Archive Modal */}
+      <HistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        selectedSessionId={selectedSessionId}
+        onResumeSessionInTab={handleResumeSessionInTab}
       />
     </div>
   );

@@ -9,9 +9,7 @@ import {
   User,
   LogOut,
   ChevronDown,
-  ShieldCheck,
-  Sparkles,
-  Network
+  ShieldCheck
 } from 'lucide-react';
 
 export default function Header({ 
@@ -84,51 +82,8 @@ export default function Header({
         </div>
       </div>
 
-      {/* Center: Main View Mode Switcher + Compact Chat/Code Toggle */}
+      {/* Center: Compact Chat/Code Toggle (when in half-screen/mobile mode) */}
       <div className="flex items-center gap-1.5 sm:gap-2">
-        {/* Main View Switcher: Console vs Graph vs Skills Hub */}
-        <div className="flex items-center bg-[#0d121c] border border-border/80 rounded-xl p-0.5 text-xs shadow-inner">
-          <button
-            onClick={() => onSelectMainView('console')}
-            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 rounded-lg font-medium transition-all cursor-pointer text-[11px] sm:text-xs ${
-              currentMainView === 'console'
-                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
-            }`}
-          >
-            <Bot className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Console & Code</span>
-            <span className="sm:hidden">Console</span>
-          </button>
-
-          <button
-            onClick={() => onSelectMainView('graph')}
-            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 rounded-lg font-medium transition-all cursor-pointer text-[11px] sm:text-xs ${
-              currentMainView === 'graph'
-                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
-            }`}
-          >
-            <Network className="w-3.5 h-3.5 text-cyan-300" />
-            <span className="hidden sm:inline">Codebase Graph</span>
-            <span className="sm:hidden">Graph</span>
-          </button>
-
-          <button
-            onClick={() => onSelectMainView('skills')}
-            className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 rounded-lg font-medium transition-all cursor-pointer text-[11px] sm:text-xs ${
-              currentMainView === 'skills'
-                ? 'bg-indigo-600 text-white shadow-sm font-semibold'
-                : 'text-slate-400 hover:text-slate-200 hover:bg-surface-hover'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-            <span className="hidden sm:inline">Skills Hub</span>
-            <span className="sm:hidden">Skills</span>
-          </button>
-        </div>
-
-        {/* Half-Screen / Compact Mode Single Pane Switcher (Chat vs Code) */}
         {isCompact && currentMainView === 'console' && (
           <div className="flex items-center bg-[#0d121c] border border-indigo-500/40 rounded-xl p-0.5 text-[11px] shadow-sm">
             <button
